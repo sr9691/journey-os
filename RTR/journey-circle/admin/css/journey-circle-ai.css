@@ -1,0 +1,446 @@
+/**
+ * Journey Circle AI Styles
+ *
+ * Styles for AI-powered title generation UI components
+ * including loading states, error messages, title selection,
+ * manual entry forms, and regeneration controls.
+ *
+ * Part of Iteration 8: AI Title Recommendations
+ *
+ * @package DirectReach_Campaign_Builder
+ * @subpackage Journey_Circle
+ * @since 2.0.0
+ */
+
+/* ==========================================================================
+   AI LOADING STATE
+   ========================================================================== */
+
+.dr-ai-loading {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 32px 24px;
+    background: #f8f9fa;
+    border: 1px dashed #c3c4c7;
+    border-radius: 8px;
+    text-align: left;
+}
+
+.dr-ai-loading__spinner {
+    flex-shrink: 0;
+}
+
+.dr-ai-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid #e2e4e7;
+    border-top-color: #2271b1;
+    border-radius: 50%;
+    animation: dr-ai-spin 0.8s linear infinite;
+}
+
+@keyframes dr-ai-spin {
+    to { transform: rotate(360deg); }
+}
+
+.dr-ai-loading__message {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1d2327;
+    margin: 0 0 4px 0;
+}
+
+.dr-ai-loading__hint {
+    font-size: 13px;
+    color: #646970;
+    margin: 0;
+    font-style: italic;
+}
+
+/* ==========================================================================
+   AI ERROR STATE
+   ========================================================================== */
+
+.dr-ai-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 20px;
+    background: #fcf0f1;
+    border: 1px solid #d63638;
+    border-left-width: 4px;
+    border-radius: 4px;
+}
+
+.dr-ai-error__icon {
+    flex-shrink: 0;
+    color: #d63638;
+}
+
+.dr-ai-error__icon .dashicons {
+    font-size: 24px;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+}
+
+.dr-ai-error__content {
+    flex: 1;
+}
+
+.dr-ai-error__message {
+    font-size: 13px;
+    color: #1d2327;
+    margin: 0 0 12px 0;
+    line-height: 1.5;
+}
+
+.dr-ai-error__actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.dr-ai-error__actions .button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.dr-ai-error__actions .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+}
+
+/* ==========================================================================
+   AI NOT CONFIGURED NOTICE
+   ========================================================================== */
+
+.dr-ai-notice {
+    margin: 16px 0;
+    padding: 12px 16px;
+    border-radius: 4px;
+}
+
+.dr-ai-notice a {
+    color: #2271b1;
+    text-decoration: underline;
+}
+
+.dr-ai-notice a:hover {
+    color: #135e96;
+}
+
+/* ==========================================================================
+   TITLE SELECTION (Problem Titles - Step 6)
+   ========================================================================== */
+
+.dr-ai-problem-titles {
+    padding: 0;
+}
+
+.dr-ai-titles-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.dr-ai-titles-instruction {
+    font-size: 14px;
+    color: #1d2327;
+    margin: 0;
+}
+
+.dr-ai-selection-count {
+    font-size: 13px;
+    color: #646970;
+    margin: 0 0 16px 0;
+    padding: 8px 12px;
+    background: #f0f0f1;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.dr-selected-count {
+    font-weight: 700;
+    color: #2271b1;
+    transition: color 0.2s ease;
+}
+
+.dr-selected-count.dr-count-complete {
+    color: #00a32a;
+}
+
+.dr-selected-count.dr-count-over {
+    color: #d63638;
+}
+
+.dr-ai-titles-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* ==========================================================================
+   TITLE OPTION (Checkbox / Radio)
+   ========================================================================== */
+
+.dr-ai-title-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    background: #ffffff;
+    border: 2px solid #dcdcde;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    line-height: 1.5;
+}
+
+.dr-ai-title-option:hover {
+    border-color: #2271b1;
+    background: #f0f6fc;
+}
+
+.dr-ai-title-option input[type="checkbox"],
+.dr-ai-title-option input[type="radio"] {
+    flex-shrink: 0;
+    margin-top: 2px;
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.dr-ai-title-option input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+}
+
+.dr-ai-title-option:has(input:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+    border-color: #dcdcde;
+    background: #f6f7f7;
+}
+
+.dr-ai-title-option:has(input:checked) {
+    border-color: #2271b1;
+    background: #f0f6fc;
+    box-shadow: 0 0 0 1px #2271b1;
+}
+
+.dr-ai-title-text {
+    font-size: 14px;
+    color: #1d2327;
+    flex: 1;
+}
+
+/* ==========================================================================
+   REGENERATE BUTTON
+   ========================================================================== */
+
+.dr-ai-regenerate-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    padding: 4px 12px;
+    cursor: pointer;
+}
+
+.dr-ai-regenerate-btn .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+    transition: transform 0.3s ease;
+}
+
+.dr-ai-regenerate-btn:hover .dashicons {
+    transform: rotate(180deg);
+}
+
+.dr-ai-regenerate-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.dr-ai-regenerate-btn:disabled .dashicons {
+    animation: dr-ai-spin 0.8s linear infinite;
+}
+
+/* ==========================================================================
+   SOLUTION GROUPS (Step 7)
+   ========================================================================== */
+
+.dr-ai-solution-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.dr-ai-solution-group {
+    background: #ffffff;
+    border: 1px solid #dcdcde;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.dr-ai-solution-group__title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1d2327;
+    margin: 0;
+    padding: 14px 16px;
+    background: #f6f7f7;
+    border-bottom: 1px solid #dcdcde;
+}
+
+.dr-ai-solution-group__title em {
+    font-style: normal;
+    color: #2271b1;
+    font-weight: 400;
+}
+
+.dr-ai-solution-group__content {
+    padding: 16px;
+}
+
+.dr-ai-solution-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dr-ai-solution-options .dr-ai-titles-instruction {
+    margin-bottom: 8px;
+}
+
+.dr-ai-solution-actions {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #f0f0f1;
+    text-align: right;
+}
+
+/* Solution option styling variant */
+.dr-ai-solution-option:has(input:checked) {
+    border-color: #42a5f5;
+    background: #e8f4fd;
+    box-shadow: 0 0 0 1px #42a5f5;
+}
+
+/* ==========================================================================
+   MANUAL ENTRY FORM
+   ========================================================================== */
+
+.dr-ai-manual-form {
+    padding: 8px 0;
+}
+
+.dr-ai-manual-form__intro {
+    font-size: 14px;
+    color: #646970;
+    margin: 0 0 16px 0;
+}
+
+.dr-ai-manual-input {
+    margin-bottom: 12px;
+}
+
+.dr-ai-manual-input label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1d2327;
+    margin-bottom: 4px;
+}
+
+.dr-ai-manual-title-input {
+    width: 100%;
+    max-width: 100%;
+    padding: 8px 12px;
+    font-size: 14px;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.dr-ai-manual-title-input:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: none;
+}
+
+.dr-ai-manual-form__actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #f0f0f1;
+}
+
+/* ==========================================================================
+   RESPONSIVE ADJUSTMENTS
+   ========================================================================== */
+
+@media screen and (max-width: 782px) {
+    .dr-ai-loading {
+        flex-direction: column;
+        text-align: center;
+        padding: 24px 16px;
+    }
+
+    .dr-ai-titles-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .dr-ai-error__actions {
+        flex-direction: column;
+    }
+
+    .dr-ai-error__actions .button {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .dr-ai-manual-form__actions {
+        flex-direction: column;
+    }
+
+    .dr-ai-manual-form__actions .button {
+        width: 100%;
+        text-align: center;
+    }
+
+    .dr-ai-title-option {
+        padding: 12px;
+    }
+
+    .dr-ai-solution-group__title {
+        font-size: 13px;
+        padding: 12px;
+    }
+
+    .dr-ai-solution-group__content {
+        padding: 12px;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .dr-ai-title-option {
+        gap: 8px;
+        padding: 10px;
+    }
+
+    .dr-ai-title-text {
+        font-size: 13px;
+    }
+}

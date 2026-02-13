@@ -1,0 +1,918 @@
+/**
+ * Journey Circle Completion Styles
+ * 
+ * Iteration 10: Steps 10-11 & Completion Flow
+ * 
+ * Styles for:
+ * - Step 10: URL Linking UI
+ * - Step 11: Asset Completion Grid
+ * - Journey Completion Celebration
+ * - Progress Indicators
+ * - Client Card Journey Badge
+ * 
+ * @package DirectReach_Campaign_Builder
+ * @subpackage Journey_Circle
+ * @since 2.0.0
+ */
+
+/* ==========================================================================
+   CSS Custom Properties (Variables)
+   ========================================================================== */
+
+:root {
+    /* Colors */
+    --jc-primary: #2271b1;
+    --jc-primary-hover: #135e96;
+    --jc-success: #00a32a;
+    --jc-success-light: #d0f0d0;
+    --jc-warning: #dba617;
+    --jc-warning-light: #fff8e5;
+    --jc-error: #d63638;
+    --jc-error-light: #fcf0f1;
+    
+    /* Problem/Solution/Offer colors */
+    --jc-problem-color: #ff6b6b;
+    --jc-solution-color: #42a5f5;
+    --jc-offer-color: #66bb6a;
+    
+    /* Neutral colors */
+    --jc-text: #1d2327;
+    --jc-text-light: #646970;
+    --jc-border: #c3c4c7;
+    --jc-border-light: #e0e0e0;
+    --jc-bg: #f0f0f1;
+    --jc-bg-white: #ffffff;
+    
+    /* Spacing */
+    --jc-spacing-xs: 4px;
+    --jc-spacing-sm: 8px;
+    --jc-spacing-md: 16px;
+    --jc-spacing-lg: 24px;
+    --jc-spacing-xl: 32px;
+    
+    /* Border radius */
+    --jc-radius-sm: 4px;
+    --jc-radius-md: 8px;
+    --jc-radius-lg: 12px;
+    --jc-radius-full: 50%;
+    
+    /* Shadows */
+    --jc-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+    --jc-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+    --jc-shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.15);
+    
+    /* Transitions */
+    --jc-transition: 0.2s ease;
+}
+
+/* Dark mode support for WordPress admin */
+body.admin-color-midnight,
+body.admin-color-coffee,
+body.admin-color-ectoplasm {
+    --jc-text: #f0f0f1;
+    --jc-text-light: #a7aaad;
+    --jc-bg: #2c3338;
+    --jc-bg-white: #3c434a;
+    --jc-border: #50575e;
+}
+
+/* ==========================================================================
+   Step 10: URL Linking UI
+   ========================================================================== */
+
+.jc-url-linker-wrapper {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: var(--jc-spacing-lg);
+}
+
+.jc-step-header {
+    text-align: center;
+    margin-bottom: var(--jc-spacing-xl);
+}
+
+.jc-step-badge {
+    display: inline-block;
+    background: var(--jc-primary);
+    color: white;
+    padding: var(--jc-spacing-xs) var(--jc-spacing-md);
+    border-radius: var(--jc-radius-full);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: var(--jc-spacing-sm);
+}
+
+.jc-step-header h2 {
+    margin: 0;
+    color: var(--jc-text);
+    font-size: 24px;
+    font-weight: 600;
+}
+
+/* Success intro section */
+.jc-url-linker-intro {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--jc-spacing-md);
+    background: var(--jc-success-light);
+    border: 1px solid var(--jc-success);
+    border-radius: var(--jc-radius-md);
+    padding: var(--jc-spacing-lg);
+    margin-bottom: var(--jc-spacing-xl);
+}
+
+.jc-success-indicator {
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    background: var(--jc-success);
+    border-radius: var(--jc-radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.jc-success-indicator i {
+    color: white;
+    font-size: 24px;
+}
+
+.jc-success-message h3 {
+    margin: 0 0 var(--jc-spacing-xs) 0;
+    color: var(--jc-text);
+    font-size: 18px;
+}
+
+.jc-success-message p {
+    margin: 0;
+    color: var(--jc-text-light);
+}
+
+/* URL form section */
+.jc-url-form-section {
+    background: var(--jc-bg-white);
+    border: 1px solid var(--jc-border);
+    border-radius: var(--jc-radius-md);
+    padding: var(--jc-spacing-lg);
+    margin-bottom: var(--jc-spacing-lg);
+}
+
+.jc-form-intro {
+    margin-bottom: var(--jc-spacing-lg);
+    padding: var(--jc-spacing-md);
+    background: var(--jc-bg);
+    border-radius: var(--jc-radius-sm);
+}
+
+.jc-form-intro p {
+    margin: 0;
+    color: var(--jc-text-light);
+    font-size: 14px;
+}
+
+.jc-form-intro i {
+    color: var(--jc-primary);
+    margin-right: var(--jc-spacing-xs);
+}
+
+.jc-form-group {
+    margin-bottom: var(--jc-spacing-lg);
+}
+
+.jc-form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: var(--jc-spacing-sm);
+    color: var(--jc-text);
+}
+
+.jc-input-wrapper {
+    position: relative;
+}
+
+.jc-input-wrapper i {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--jc-text-light);
+}
+
+.jc-url-input {
+    width: 100%;
+    padding: var(--jc-spacing-md) var(--jc-spacing-md) var(--jc-spacing-md) 40px;
+    border: 1px solid var(--jc-border);
+    border-radius: var(--jc-radius-sm);
+    font-size: 15px;
+    transition: border-color var(--jc-transition), box-shadow var(--jc-transition);
+}
+
+.jc-url-input:focus {
+    outline: none;
+    border-color: var(--jc-primary);
+    box-shadow: 0 0 0 2px rgba(34, 113, 177, 0.2);
+}
+
+.jc-url-input.valid {
+    border-color: var(--jc-success);
+}
+
+.jc-url-input.invalid {
+    border-color: var(--jc-error);
+}
+
+.jc-validation-message {
+    margin-top: var(--jc-spacing-xs);
+    font-size: 13px;
+    min-height: 20px;
+}
+
+.jc-validation-message.valid {
+    color: var(--jc-success);
+}
+
+.jc-validation-message.invalid,
+.jc-validation-message.error {
+    color: var(--jc-error);
+}
+
+.jc-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--jc-spacing-md);
+}
+
+/* URL tips section */
+.jc-url-tips {
+    background: var(--jc-warning-light);
+    border: 1px solid var(--jc-warning);
+    border-radius: var(--jc-radius-md);
+    padding: var(--jc-spacing-md);
+}
+
+.jc-url-tips h4 {
+    margin: 0 0 var(--jc-spacing-sm) 0;
+    color: var(--jc-text);
+    font-size: 14px;
+}
+
+.jc-url-tips h4 i {
+    color: var(--jc-warning);
+    margin-right: var(--jc-spacing-xs);
+}
+
+.jc-url-tips ul {
+    margin: 0;
+    padding-left: var(--jc-spacing-lg);
+    font-size: 13px;
+    color: var(--jc-text-light);
+}
+
+.jc-url-tips li {
+    margin-bottom: var(--jc-spacing-xs);
+}
+
+/* Link success state */
+.jc-link-success {
+    text-align: center;
+    padding: var(--jc-spacing-xl);
+}
+
+.jc-link-success .jc-success-icon {
+    width: 64px;
+    height: 64px;
+    background: var(--jc-success);
+    border-radius: var(--jc-radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto var(--jc-spacing-md);
+}
+
+.jc-link-success .jc-success-icon i {
+    color: white;
+    font-size: 32px;
+}
+
+.jc-link-success h3 {
+    margin: 0 0 var(--jc-spacing-sm) 0;
+    color: var(--jc-text);
+}
+
+.jc-link-success p {
+    margin: 0 0 var(--jc-spacing-lg) 0;
+    color: var(--jc-text-light);
+}
+
+/* ==========================================================================
+   Step 11: Completion Grid
+   ========================================================================== */
+
+.jc-completion-wrapper {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: var(--jc-spacing-lg);
+}
+
+/* Progress header */
+.jc-completion-header {
+    margin-bottom: var(--jc-spacing-xl);
+}
+
+.jc-completion-header h2 {
+    margin: 0 0 var(--jc-spacing-md) 0;
+    color: var(--jc-text);
+    font-size: 24px;
+    text-align: center;
+}
+
+.jc-progress-overview {
+    background: var(--jc-bg-white);
+    border: 1px solid var(--jc-border);
+    border-radius: var(--jc-radius-md);
+    padding: var(--jc-spacing-lg);
+}
+
+.jc-progress-bar-wrapper {
+    margin-bottom: var(--jc-spacing-md);
+}
+
+.jc-progress-bar {
+    height: 12px;
+    background: var(--jc-bg);
+    border-radius: var(--jc-radius-full);
+    overflow: hidden;
+    margin-bottom: var(--jc-spacing-xs);
+}
+
+.jc-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--jc-primary) 0%, var(--jc-success) 100%);
+    border-radius: var(--jc-radius-full);
+    transition: width 0.5s ease;
+}
+
+.jc-progress-text {
+    display: block;
+    text-align: center;
+    font-weight: 600;
+    color: var(--jc-text);
+}
+
+.jc-progress-stats {
+    display: flex;
+    justify-content: center;
+    gap: var(--jc-spacing-xl);
+}
+
+.jc-stat {
+    display: flex;
+    align-items: center;
+    gap: var(--jc-spacing-sm);
+    color: var(--jc-text-light);
+    font-size: 14px;
+}
+
+.jc-stat i.fa-exclamation-circle {
+    color: var(--jc-problem-color);
+}
+
+.jc-stat i.fa-lightbulb {
+    color: var(--jc-solution-color);
+}
+
+/* Asset grid section */
+.jc-asset-grid-section {
+    margin-top: var(--jc-spacing-xl);
+}
+
+.jc-section-intro {
+    text-align: center;
+    margin-bottom: var(--jc-spacing-lg);
+}
+
+.jc-section-intro h3 {
+    margin: 0 0 var(--jc-spacing-sm) 0;
+    color: var(--jc-text);
+}
+
+.jc-section-intro p {
+    margin: 0;
+    color: var(--jc-text-light);
+}
+
+/* Grid groups */
+.jc-grid-group {
+    margin-bottom: var(--jc-spacing-xl);
+}
+
+.jc-grid-group h4 {
+    display: flex;
+    align-items: center;
+    gap: var(--jc-spacing-sm);
+    margin: 0 0 var(--jc-spacing-md) 0;
+    color: var(--jc-text);
+    font-size: 16px;
+    padding-bottom: var(--jc-spacing-sm);
+    border-bottom: 2px solid var(--jc-border-light);
+}
+
+.jc-icon-problem {
+    color: var(--jc-problem-color);
+}
+
+.jc-icon-solution {
+    color: var(--jc-solution-color);
+}
+
+/* Item grid */
+.jc-item-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--jc-spacing-md);
+}
+
+/* Grid items */
+.jc-grid-item {
+    background: var(--jc-bg-white);
+    border: 2px solid var(--jc-border);
+    border-radius: var(--jc-radius-md);
+    padding: var(--jc-spacing-md);
+    cursor: pointer;
+    transition: all var(--jc-transition);
+}
+
+.jc-grid-item:hover {
+    border-color: var(--jc-primary);
+    box-shadow: var(--jc-shadow-md);
+}
+
+.jc-grid-item.selected {
+    border-color: var(--jc-primary);
+    background: rgba(34, 113, 177, 0.05);
+    box-shadow: 0 0 0 3px rgba(34, 113, 177, 0.2);
+}
+
+.jc-grid-item.complete {
+    border-color: var(--jc-success);
+}
+
+.jc-grid-item.complete:hover {
+    border-color: var(--jc-success);
+}
+
+.jc-grid-item.primary {
+    border-style: double;
+    border-width: 4px;
+}
+
+/* Grid item header */
+.jc-item-header {
+    display: flex;
+    align-items: center;
+    gap: var(--jc-spacing-sm);
+    margin-bottom: var(--jc-spacing-sm);
+}
+
+.jc-item-position {
+    width: 28px;
+    height: 28px;
+    background: var(--jc-bg);
+    border-radius: var(--jc-radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--jc-text);
+}
+
+.jc-primary-badge {
+    background: var(--jc-problem-color);
+    color: white;
+    padding: 2px 8px;
+    border-radius: var(--jc-radius-full);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.jc-item-status {
+    margin-left: auto;
+}
+
+.jc-item-status.complete i {
+    color: var(--jc-success);
+}
+
+.jc-item-status.pending i {
+    color: var(--jc-border);
+}
+
+/* Grid item content */
+.jc-item-title {
+    font-weight: 500;
+    color: var(--jc-text);
+    margin-bottom: var(--jc-spacing-sm);
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.jc-item-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+}
+
+.jc-status-text {
+    color: var(--jc-text-light);
+}
+
+.jc-grid-item.complete .jc-status-text {
+    color: var(--jc-success);
+}
+
+.jc-asset-count {
+    color: var(--jc-text-light);
+}
+
+.jc-item-urls {
+    margin-top: var(--jc-spacing-sm);
+    display: flex;
+    gap: var(--jc-spacing-xs);
+}
+
+.jc-url-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: var(--jc-bg);
+    border-radius: var(--jc-radius-sm);
+    color: var(--jc-primary);
+    text-decoration: none;
+    transition: all var(--jc-transition);
+}
+
+.jc-url-link:hover {
+    background: var(--jc-primary);
+    color: white;
+}
+
+/* Completion actions */
+.jc-completion-actions {
+    display: flex;
+    justify-content: center;
+    gap: var(--jc-spacing-md);
+    margin-top: var(--jc-spacing-xl);
+    padding-top: var(--jc-spacing-lg);
+    border-top: 1px solid var(--jc-border-light);
+}
+
+/* ==========================================================================
+   Journey Completion Celebration
+   ========================================================================== */
+
+.jc-celebration {
+    text-align: center;
+    padding: var(--jc-spacing-xl) 0;
+}
+
+.jc-celebration-icon {
+    width: 100px;
+    height: 100px;
+    background: linear-gradient(135deg, var(--jc-warning) 0%, #f4a01c 100%);
+    border-radius: var(--jc-radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto var(--jc-spacing-lg);
+    animation: celebrate-bounce 0.5s ease;
+}
+
+.jc-celebration-icon i {
+    color: white;
+    font-size: 48px;
+}
+
+@keyframes celebrate-bounce {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+.jc-celebration h2 {
+    margin: 0 0 var(--jc-spacing-md) 0;
+    font-size: 28px;
+    color: var(--jc-text);
+}
+
+.jc-celebration p {
+    margin: 0 0 var(--jc-spacing-xl) 0;
+    color: var(--jc-text-light);
+    font-size: 16px;
+}
+
+/* Completion summary stats */
+.jc-completion-summary {
+    display: flex;
+    justify-content: center;
+    gap: var(--jc-spacing-xl);
+    margin-bottom: var(--jc-spacing-xl);
+}
+
+.jc-summary-stat {
+    text-align: center;
+    padding: var(--jc-spacing-lg);
+    background: var(--jc-bg);
+    border-radius: var(--jc-radius-md);
+    min-width: 120px;
+}
+
+.jc-summary-number {
+    display: block;
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--jc-primary);
+    line-height: 1;
+    margin-bottom: var(--jc-spacing-xs);
+}
+
+.jc-summary-label {
+    font-size: 14px;
+    color: var(--jc-text-light);
+}
+
+/* ==========================================================================
+   Client Card Journey Badge
+   ========================================================================== */
+
+.client-card .jc-journey-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--jc-spacing-xs);
+    background: var(--jc-success);
+    color: white;
+    padding: var(--jc-spacing-xs) var(--jc-spacing-sm);
+    border-radius: var(--jc-radius-full);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-left: var(--jc-spacing-sm);
+}
+
+.client-card .jc-journey-badge i {
+    font-size: 10px;
+}
+
+.client-card .jc-journey-badge.in-progress {
+    background: var(--jc-warning);
+}
+
+.client-card .jc-journey-badge.incomplete {
+    background: var(--jc-text-light);
+}
+
+/* Client card header with badge */
+.client-card-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.client-card-header .client-name {
+    flex: 1;
+}
+
+/* ==========================================================================
+   Notification Styles
+   ========================================================================== */
+
+.jc-notification {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: var(--jc-spacing-sm);
+    padding: var(--jc-spacing-md) var(--jc-spacing-lg);
+    background: var(--jc-bg-white);
+    border-radius: var(--jc-radius-md);
+    box-shadow: var(--jc-shadow-lg);
+    z-index: 9999;
+    animation: slide-in 0.3s ease;
+}
+
+@keyframes slide-in {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.jc-notification.fade-out {
+    animation: fade-out 0.3s ease forwards;
+}
+
+@keyframes fade-out {
+    to {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+}
+
+.jc-notification-success {
+    border-left: 4px solid var(--jc-success);
+}
+
+.jc-notification-success i {
+    color: var(--jc-success);
+}
+
+.jc-notification-error {
+    border-left: 4px solid var(--jc-error);
+}
+
+.jc-notification-error i {
+    color: var(--jc-error);
+}
+
+.jc-notification-warning {
+    border-left: 4px solid var(--jc-warning);
+}
+
+.jc-notification-warning i {
+    color: var(--jc-warning);
+}
+
+.jc-notification-info {
+    border-left: 4px solid var(--jc-primary);
+}
+
+.jc-notification-info i {
+    color: var(--jc-primary);
+}
+
+/* ==========================================================================
+   Campaign Builder Success Notification
+   ========================================================================== */
+
+.dr-journey-success-banner {
+    background: linear-gradient(135deg, var(--jc-success) 0%, #00c851 100%);
+    color: white;
+    padding: var(--jc-spacing-md) var(--jc-spacing-lg);
+    margin-bottom: var(--jc-spacing-lg);
+    border-radius: var(--jc-radius-md);
+    display: flex;
+    align-items: center;
+    gap: var(--jc-spacing-md);
+    animation: success-slide-down 0.5s ease;
+}
+
+@keyframes success-slide-down {
+    from {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.dr-journey-success-banner i {
+    font-size: 24px;
+}
+
+.dr-journey-success-banner .banner-content {
+    flex: 1;
+}
+
+.dr-journey-success-banner h4 {
+    margin: 0 0 var(--jc-spacing-xs) 0;
+    font-size: 16px;
+}
+
+.dr-journey-success-banner p {
+    margin: 0;
+    opacity: 0.9;
+    font-size: 14px;
+}
+
+.dr-journey-success-banner .close-banner {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    padding: var(--jc-spacing-xs) var(--jc-spacing-sm);
+    border-radius: var(--jc-radius-sm);
+    cursor: pointer;
+    transition: background var(--jc-transition);
+}
+
+.dr-journey-success-banner .close-banner:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* ==========================================================================
+   Loading & Error States
+   ========================================================================== */
+
+.jc-loading {
+    text-align: center;
+    padding: var(--jc-spacing-xl);
+    color: var(--jc-text-light);
+}
+
+.jc-error {
+    text-align: center;
+    padding: var(--jc-spacing-xl);
+    background: var(--jc-error-light);
+    border: 1px solid var(--jc-error);
+    border-radius: var(--jc-radius-md);
+    color: var(--jc-error);
+}
+
+.jc-error i {
+    font-size: 32px;
+    margin-bottom: var(--jc-spacing-md);
+}
+
+.jc-error p {
+    margin: 0 0 var(--jc-spacing-md) 0;
+}
+
+/* ==========================================================================
+   Responsive Design
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    .jc-completion-wrapper,
+    .jc-url-linker-wrapper {
+        padding: var(--jc-spacing-md);
+    }
+    
+    .jc-item-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .jc-progress-stats {
+        flex-direction: column;
+        gap: var(--jc-spacing-sm);
+    }
+    
+    .jc-completion-summary {
+        flex-direction: column;
+        gap: var(--jc-spacing-md);
+    }
+    
+    .jc-completion-actions {
+        flex-direction: column;
+    }
+    
+    .jc-form-actions {
+        flex-direction: column-reverse;
+    }
+    
+    .jc-form-actions .btn {
+        width: 100%;
+    }
+    
+    .jc-url-linker-intro {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .dr-journey-success-banner {
+        flex-direction: column;
+        text-align: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .jc-step-header h2 {
+        font-size: 20px;
+    }
+    
+    .jc-celebration h2 {
+        font-size: 22px;
+    }
+    
+    .jc-celebration-icon {
+        width: 80px;
+        height: 80px;
+    }
+    
+    .jc-celebration-icon i {
+        font-size: 36px;
+    }
+}

@@ -1,0 +1,1053 @@
+/**
+ * Journey Circle Creator - Steps 7-8 Styles
+ *
+ * Styles for Solution Title Selection (Step 7) and Offer Mapping (Step 8)
+ *
+ * @package DirectReach_Campaign_Builder
+ * @subpackage Journey_Circle
+ * @since 2.0.0
+ */
+
+/* ==========================================================================
+   CSS CUSTOM PROPERTIES
+   ========================================================================== */
+
+:root {
+    /* Colors */
+    --jc-primary: #2271b1;
+    --jc-primary-hover: #135e96;
+    --jc-primary-light: #e7f3ff;
+    --jc-secondary: #50575e;
+    --jc-success: #00a32a;
+    --jc-success-light: #edfaef;
+    --jc-warning: #dba617;
+    --jc-warning-light: #fef8e7;
+    --jc-danger: #d63638;
+    --jc-danger-light: #fcf0f1;
+    --jc-danger-hover: #b32d2e;
+    
+    /* Solution Ring (Blue) */
+    --jc-solution-color: #42a5f5;
+    --jc-solution-light: #e3f2fd;
+    --jc-solution-dark: #1976d2;
+    
+    /* Offer Center (Green) */
+    --jc-offer-color: #66bb6a;
+    --jc-offer-light: #e8f5e9;
+    --jc-offer-dark: #388e3c;
+    
+    /* Problem Ring (Red) */
+    --jc-problem-color: #ff6b6b;
+    --jc-problem-light: #ffebee;
+    --jc-problem-dark: #d32f2f;
+    
+    /* Neutral */
+    --jc-bg: #f0f0f1;
+    --jc-bg-white: #ffffff;
+    --jc-border: #c3c4c7;
+    --jc-border-light: #e0e0e0;
+    --jc-text: #1d2327;
+    --jc-text-muted: #646970;
+    --jc-text-light: #8c8f94;
+    
+    /* Spacing */
+    --jc-spacing-xs: 4px;
+    --jc-spacing-sm: 8px;
+    --jc-spacing-md: 16px;
+    --jc-spacing-lg: 24px;
+    --jc-spacing-xl: 32px;
+    
+    /* Border Radius */
+    --jc-radius-sm: 4px;
+    --jc-radius-md: 8px;
+    --jc-radius-lg: 12px;
+    
+    /* Shadows */
+    --jc-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+    --jc-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+    --jc-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+    
+    /* Transitions */
+    --jc-transition-fast: 150ms ease;
+    --jc-transition-normal: 250ms ease;
+}
+
+/* ==========================================================================
+   BASE & UTILITIES
+   ========================================================================== */
+
+.jc-loading {
+    position: relative;
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+.jc-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 40px;
+    height: 40px;
+    margin: -20px 0 0 -20px;
+    border: 3px solid var(--jc-border);
+    border-top-color: var(--jc-primary);
+    border-radius: 50%;
+    animation: jc-spin 0.8s linear infinite;
+}
+
+@keyframes jc-spin {
+    to { transform: rotate(360deg); }
+}
+
+.jc-required {
+    color: var(--jc-danger);
+}
+
+.jc-optional {
+    color: var(--jc-text-muted);
+    font-weight: normal;
+    font-size: 0.85em;
+}
+
+/* ==========================================================================
+   BADGES
+   ========================================================================== */
+
+.jc-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-radius: 100px;
+    white-space: nowrap;
+}
+
+.jc-badge--primary {
+    background: var(--jc-problem-light);
+    color: var(--jc-problem-dark);
+}
+
+.jc-badge--solution {
+    background: var(--jc-solution-light);
+    color: var(--jc-solution-dark);
+}
+
+.jc-badge--offer {
+    background: var(--jc-offer-light);
+    color: var(--jc-offer-dark);
+}
+
+/* ==========================================================================
+   BUTTONS
+   ========================================================================== */
+
+.jc-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--jc-spacing-sm);
+    padding: var(--jc-spacing-sm) var(--jc-spacing-md);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.4;
+    text-decoration: none;
+    border: 1px solid transparent;
+    border-radius: var(--jc-radius-sm);
+    cursor: pointer;
+    transition: all var(--jc-transition-fast);
+}
+
+.jc-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.jc-btn--primary {
+    background: var(--jc-primary);
+    border-color: var(--jc-primary);
+    color: #fff;
+}
+
+.jc-btn--primary:hover:not(:disabled) {
+    background: var(--jc-primary-hover);
+    border-color: var(--jc-primary-hover);
+}
+
+.jc-btn--secondary {
+    background: var(--jc-bg-white);
+    border-color: var(--jc-border);
+    color: var(--jc-text);
+}
+
+.jc-btn--secondary:hover:not(:disabled) {
+    background: var(--jc-bg);
+    border-color: var(--jc-secondary);
+}
+
+.jc-btn--danger {
+    background: transparent;
+    border-color: transparent;
+    color: var(--jc-danger);
+}
+
+.jc-btn--danger:hover:not(:disabled) {
+    background: var(--jc-danger-light);
+}
+
+.jc-btn--icon {
+    padding: var(--jc-spacing-xs);
+    min-width: 32px;
+    min-height: 32px;
+}
+
+.jc-btn--icon i {
+    font-size: 14px;
+}
+
+/* ==========================================================================
+   FORMS
+   ========================================================================== */
+
+.jc-form-group {
+    margin-bottom: var(--jc-spacing-md);
+}
+
+.jc-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--jc-spacing-md);
+}
+
+@media (max-width: 768px) {
+    .jc-form-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.jc-form-label {
+    display: block;
+    margin-bottom: var(--jc-spacing-xs);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--jc-text);
+}
+
+.jc-form-input,
+.jc-form-textarea {
+    width: 100%;
+    padding: var(--jc-spacing-sm) var(--jc-spacing-md);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--jc-text);
+    background: var(--jc-bg-white);
+    border: 1px solid var(--jc-border);
+    border-radius: var(--jc-radius-sm);
+    transition: border-color var(--jc-transition-fast), box-shadow var(--jc-transition-fast);
+}
+
+.jc-form-input:focus,
+.jc-form-textarea:focus {
+    outline: none;
+    border-color: var(--jc-primary);
+    box-shadow: 0 0 0 2px var(--jc-primary-light);
+}
+
+.jc-form-input::placeholder,
+.jc-form-textarea::placeholder {
+    color: var(--jc-text-light);
+}
+
+.jc-form-textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+/* ==========================================================================
+   STEP 7: SOLUTION TITLE SELECTION
+   ========================================================================== */
+
+.jc-step7 {
+    padding: var(--jc-spacing-lg);
+}
+
+.jc-step7__header {
+    margin-bottom: var(--jc-spacing-xl);
+    text-align: center;
+}
+
+.jc-step7__title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--jc-spacing-sm);
+    margin: 0 0 var(--jc-spacing-sm);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--jc-text);
+}
+
+.jc-step7__title i {
+    color: var(--jc-solution-color);
+}
+
+.jc-step7__description {
+    margin: 0 0 var(--jc-spacing-md);
+    color: var(--jc-text-muted);
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Progress Bar */
+.jc-step7__progress {
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.jc-step7__progress-bar {
+    height: 8px;
+    background: var(--jc-bg);
+    border-radius: 100px;
+    overflow: hidden;
+    margin-bottom: var(--jc-spacing-xs);
+}
+
+.jc-step7__progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--jc-solution-color), var(--jc-solution-dark));
+    border-radius: 100px;
+    transition: width var(--jc-transition-normal);
+}
+
+.jc-step7__progress-text {
+    font-size: 13px;
+    color: var(--jc-text-muted);
+}
+
+/* Cards Container */
+.jc-step7__cards {
+    display: flex;
+    flex-direction: column;
+    gap: var(--jc-spacing-md);
+    max-width: 800px;
+    margin: 0 auto var(--jc-spacing-lg);
+}
+
+/* Validation Message */
+.jc-step7__validation {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--jc-spacing-sm);
+    padding: var(--jc-spacing-md);
+    background: var(--jc-warning-light);
+    border-radius: var(--jc-radius-md);
+    color: var(--jc-warning);
+    font-size: 14px;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.jc-step7__validation--complete {
+    background: var(--jc-success-light);
+    color: var(--jc-success);
+}
+
+/* ==========================================================================
+   SOLUTION CARD
+   ========================================================================== */
+
+.jc-solution-card {
+    background: var(--jc-bg-white);
+    border: 2px solid var(--jc-border-light);
+    border-radius: var(--jc-radius-lg);
+    overflow: hidden;
+    transition: border-color var(--jc-transition-normal), box-shadow var(--jc-transition-normal);
+}
+
+.jc-solution-card:hover {
+    border-color: var(--jc-solution-color);
+    box-shadow: var(--jc-shadow-md);
+}
+
+.jc-solution-card--has-solution {
+    border-color: var(--jc-solution-color);
+}
+
+.jc-solution-card--primary {
+    border-color: var(--jc-problem-color);
+}
+
+.jc-solution-card--primary.jc-solution-card--has-solution {
+    border-color: var(--jc-solution-color);
+}
+
+/* Problem Section */
+.jc-solution-card__problem {
+    padding: var(--jc-spacing-md);
+    background: var(--jc-problem-light);
+    border-bottom: 1px dashed var(--jc-border-light);
+}
+
+.jc-solution-card__problem-header {
+    display: flex;
+    align-items: center;
+    gap: var(--jc-spacing-sm);
+    margin-bottom: var(--jc-spacing-xs);
+}
+
+.jc-solution-card__position {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: var(--jc-problem-color);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 50%;
+}
+
+.jc-solution-card__problem-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--jc-problem-dark);
+}
+
+.jc-solution-card__problem-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--jc-text);
+    line-height: 1.4;
+}
+
+/* Arrow Divider */
+.jc-solution-card__arrow {
+    display: flex;
+    justify-content: center;
+    padding: var(--jc-spacing-sm);
+    background: linear-gradient(to bottom, var(--jc-problem-light), var(--jc-solution-light));
+}
+
+.jc-solution-card__arrow i {
+    color: var(--jc-text-muted);
+    font-size: 16px;
+}
+
+/* Solution Section */
+.jc-solution-card__solution {
+    padding: var(--jc-spacing-md);
+    background: var(--jc-solution-light);
+}
+
+.jc-solution-card__solution-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--jc-spacing-sm);
+}
+
+.jc-solution-card__solution-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--jc-solution-dark);
+}
+
+.jc-solution-card__solution-actions {
+    display: flex;
+    gap: var(--jc-spacing-xs);
+}
+
+.jc-solution-card__solution-title {
+    margin: 0 0 var(--jc-spacing-xs);
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--jc-text);
+    line-height: 1.4;
+}
+
+.jc-solution-card__solution-desc {
+    margin: 0 0 var(--jc-spacing-sm);
+    font-size: 13px;
+    color: var(--jc-text-muted);
+    line-height: 1.5;
+}
+
+.jc-solution-card__solution-status {
+    display: flex;
+    align-items: center;
+    gap: var(--jc-spacing-xs);
+    font-size: 13px;
+    color: var(--jc-success);
+}
+
+/* Solution Form */
+.jc-solution-form {
+    padding: 0;
+}
+
+.jc-solution-form__header {
+    margin-bottom: var(--jc-spacing-md);
+}
+
+.jc-solution-form__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--jc-spacing-sm);
+    margin-top: var(--jc-spacing-md);
+    padding-top: var(--jc-spacing-md);
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* ==========================================================================
+   STEP 8: OFFER MAPPING
+   ========================================================================== */
+
+.jc-step8 {
+    padding: var(--jc-spacing-lg);
+}
+
+.jc-step8__header {
+    margin-bottom: var(--jc-spacing-xl);
+    text-align: center;
+}
+
+.jc-step8__title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--jc-spacing-sm);
+    margin: 0 0 var(--jc-spacing-sm);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--jc-text);
+}
+
+.jc-step8__title i {
+    color: var(--jc-offer-color);
+}
+
+.jc-step8__description {
+    margin: 0 0 var(--jc-spacing-md);
+    color: var(--jc-text-muted);
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Summary Stats */
+.jc-step8__summary {
+    display: flex;
+    justify-content: center;
+    gap: var(--jc-spacing-lg);
+    margin-top: var(--jc-spacing-md);
+}
+
+.jc-step8__summary-item {
+    display: flex;
+    align-items: center;
+    gap: var(--jc-spacing-xs);
+    font-size: 14px;
+    color: var(--jc-text-muted);
+}
+
+.jc-step8__summary-item i {
+    color: var(--jc-primary);
+}
+
+/* Sections Container */
+.jc-step8__sections {
+    display: flex;
+    flex-direction: column;
+    gap: var(--jc-spacing-md);
+    max-width: 900px;
+    margin: 0 auto var(--jc-spacing-lg);
+}
+
+/* Validation Message */
+.jc-step8__validation {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--jc-spacing-sm);
+    padding: var(--jc-spacing-md);
+    background: var(--jc-warning-light);
+    border-radius: var(--jc-radius-md);
+    color: var(--jc-warning);
+    font-size: 14px;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.jc-step8__validation--complete {
+    background: var(--jc-success-light);
+    color: var(--jc-success);
+}
+
+/* ==========================================================================
+   OFFER SECTION (ACCORDION)
+   ========================================================================== */
+
+.jc-offer-section {
+    background: var(--jc-bg-white);
+    border: 1px solid var(--jc-border-light);
+    border-radius: var(--jc-radius-lg);
+    overflow: hidden;
+    transition: box-shadow var(--jc-transition-normal);
+}
+
+.jc-offer-section:hover {
+    box-shadow: var(--jc-shadow-sm);
+}
+
+/* Section Header */
+.jc-offer-section__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--jc-spacing-md);
+    background: var(--jc-solution-light);
+    cursor: pointer;
+    transition: background var(--jc-transition-fast);
+    user-select: none;
+}
+
+.jc-offer-section__header:hover {
+    background: #d4e8fb;
+}
+
+.jc-offer-section__header-content {
+    display: flex;
+    align-items: center;
+    gap: var(--jc-spacing-md);
+}
+
+.jc-offer-section__position {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: var(--jc-solution-color);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 50%;
+}
+
+.jc-offer-section__info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.jc-offer-section__solution-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--jc-text);
+}
+
+.jc-offer-section__problem-title {
+    display: flex;
+    align-items: center;
+    gap: var(--jc-spacing-xs);
+    font-size: 12px;
+    color: var(--jc-text-muted);
+}
+
+.jc-offer-section__problem-title i {
+    font-size: 10px;
+}
+
+.jc-offer-section__header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--jc-spacing-md);
+}
+
+.jc-offer-section__count {
+    font-size: 13px;
+    color: var(--jc-text-muted);
+    background: var(--jc-bg-white);
+    padding: 2px 8px;
+    border-radius: 100px;
+}
+
+.jc-offer-section__toggle {
+    color: var(--jc-text-muted);
+    transition: transform var(--jc-transition-normal);
+}
+
+/* Section Content */
+.jc-offer-section__content {
+    display: none;
+    padding: var(--jc-spacing-md);
+    border-top: 1px solid var(--jc-border-light);
+}
+
+/* Expanded State */
+.jc-offer-section--expanded .jc-offer-section__content {
+    display: block;
+}
+
+.jc-offer-section--expanded .jc-offer-section__toggle {
+    transform: rotate(180deg);
+}
+
+/* Offers Container */
+.jc-offer-section__offers {
+    display: flex;
+    flex-direction: column;
+    gap: var(--jc-spacing-sm);
+    margin-bottom: var(--jc-spacing-md);
+}
+
+/* No Offers Message */
+.jc-no-offers {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--jc-spacing-sm);
+    padding: var(--jc-spacing-lg);
+    text-align: center;
+    color: var(--jc-text-muted);
+}
+
+.jc-no-offers i {
+    font-size: 32px;
+    opacity: 0.5;
+}
+
+.jc-no-offers p {
+    margin: 0;
+    font-size: 14px;
+}
+
+/* ==========================================================================
+   OFFER CARD
+   ========================================================================== */
+
+.jc-offer-card {
+    background: var(--jc-offer-light);
+    border: 1px solid var(--jc-border-light);
+    border-radius: var(--jc-radius-md);
+    transition: border-color var(--jc-transition-fast);
+}
+
+.jc-offer-card:hover {
+    border-color: var(--jc-offer-color);
+}
+
+.jc-offer-card__content {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--jc-spacing-md);
+    padding: var(--jc-spacing-md);
+}
+
+.jc-offer-card__main {
+    flex: 1;
+    min-width: 0;
+}
+
+.jc-offer-card__title {
+    margin: 0 0 var(--jc-spacing-xs);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--jc-text);
+}
+
+.jc-offer-card__url {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--jc-spacing-xs);
+    font-size: 12px;
+    color: var(--jc-primary);
+    text-decoration: none;
+    word-break: break-all;
+}
+
+.jc-offer-card__url:hover {
+    text-decoration: underline;
+}
+
+.jc-offer-card__url i {
+    flex-shrink: 0;
+    font-size: 10px;
+}
+
+.jc-offer-card__description {
+    margin: var(--jc-spacing-xs) 0 0;
+    font-size: 13px;
+    color: var(--jc-text-muted);
+    line-height: 1.4;
+}
+
+.jc-offer-card__actions {
+    display: flex;
+    gap: var(--jc-spacing-xs);
+    flex-shrink: 0;
+}
+
+/* Editing State */
+.jc-offer-card--editing {
+    border-color: var(--jc-primary);
+}
+
+.jc-offer-card--editing .jc-offer-edit-form {
+    padding: var(--jc-spacing-md);
+}
+
+.jc-offer-edit-form__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--jc-spacing-sm);
+    margin-top: var(--jc-spacing-md);
+    padding-top: var(--jc-spacing-md);
+    border-top: 1px solid var(--jc-border-light);
+}
+
+/* ==========================================================================
+   OFFER FORM
+   ========================================================================== */
+
+.jc-offer-form {
+    background: var(--jc-bg);
+    border: 2px dashed var(--jc-border);
+    border-radius: var(--jc-radius-md);
+    padding: var(--jc-spacing-md);
+}
+
+.jc-offer-form__header {
+    margin-bottom: var(--jc-spacing-md);
+}
+
+.jc-offer-form__title {
+    display: flex;
+    align-items: center;
+    gap: var(--jc-spacing-xs);
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--jc-text);
+}
+
+.jc-offer-form__title i {
+    color: var(--jc-offer-color);
+}
+
+.jc-offer-form__actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: var(--jc-spacing-md);
+}
+
+/* ==========================================================================
+   EMPTY STATE
+   ========================================================================== */
+
+.jc-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--jc-spacing-md);
+    padding: var(--jc-spacing-xl) var(--jc-spacing-lg);
+    text-align: center;
+    background: var(--jc-bg);
+    border-radius: var(--jc-radius-lg);
+    min-height: 200px;
+}
+
+.jc-empty-state i {
+    font-size: 48px;
+    color: var(--jc-text-light);
+    opacity: 0.6;
+}
+
+.jc-empty-state h4 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--jc-text);
+}
+
+.jc-empty-state p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--jc-text-muted);
+    max-width: 400px;
+}
+
+/* ==========================================================================
+   NOTIFICATIONS
+   ========================================================================== */
+
+.jc-notification {
+    position: fixed;
+    top: 50px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: var(--jc-spacing-sm);
+    padding: var(--jc-spacing-md) var(--jc-spacing-lg);
+    background: var(--jc-bg-white);
+    border-radius: var(--jc-radius-md);
+    box-shadow: var(--jc-shadow-lg);
+    transform: translateX(calc(100% + 40px));
+    transition: transform var(--jc-transition-normal);
+    z-index: 99999;
+    max-width: 400px;
+}
+
+.jc-notification--visible {
+    transform: translateX(0);
+}
+
+.jc-notification__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.jc-notification--success .jc-notification__icon {
+    background: var(--jc-success-light);
+    color: var(--jc-success);
+}
+
+.jc-notification--error .jc-notification__icon {
+    background: var(--jc-danger-light);
+    color: var(--jc-danger);
+}
+
+.jc-notification--warning .jc-notification__icon {
+    background: var(--jc-warning-light);
+    color: var(--jc-warning);
+}
+
+.jc-notification__message {
+    font-size: 14px;
+    color: var(--jc-text);
+}
+
+/* ==========================================================================
+   RESPONSIVE ADJUSTMENTS
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    .jc-step7,
+    .jc-step8 {
+        padding: var(--jc-spacing-md);
+    }
+    
+    .jc-step7__title,
+    .jc-step8__title {
+        font-size: 18px;
+    }
+    
+    .jc-step7__cards,
+    .jc-step8__sections {
+        gap: var(--jc-spacing-md);
+    }
+    
+    .jc-solution-card__problem,
+    .jc-solution-card__solution {
+        padding: var(--jc-spacing-md);
+    }
+    
+    .jc-solution-card__problem-title,
+    .jc-solution-card__solution-title {
+        font-size: 14px;
+    }
+    
+    .jc-offer-section__header {
+        padding: var(--jc-spacing-sm) var(--jc-spacing-md);
+    }
+    
+    .jc-offer-section__header-content {
+        gap: var(--jc-spacing-sm);
+    }
+    
+    .jc-offer-section__position {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+    }
+    
+    .jc-offer-section__solution-title {
+        font-size: 14px;
+    }
+    
+    .jc-offer-card__content {
+        flex-direction: column;
+        gap: var(--jc-spacing-sm);
+    }
+    
+    .jc-offer-card__actions {
+        align-self: flex-end;
+    }
+    
+    .jc-step8__summary {
+        flex-direction: column;
+        gap: var(--jc-spacing-sm);
+    }
+    
+    .jc-notification {
+        left: 20px;
+        right: 20px;
+        max-width: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .jc-solution-card__solution-actions {
+        position: absolute;
+        top: var(--jc-spacing-sm);
+        right: var(--jc-spacing-sm);
+    }
+    
+    .jc-solution-card__solution {
+        position: relative;
+    }
+    
+    .jc-form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .jc-offer-section__count {
+        display: none;
+    }
+}
+
+/* ==========================================================================
+   DARK MODE SUPPORT (WordPress Admin)
+   ========================================================================== */
+
+@media (prefers-color-scheme: dark) {
+    body.admin-color-modern {
+        --jc-bg: #1d2327;
+        --jc-bg-white: #2c3338;
+        --jc-border: #50575e;
+        --jc-border-light: #3c4349;
+        --jc-text: #f0f0f1;
+        --jc-text-muted: #a7aaad;
+        --jc-text-light: #8c8f94;
+    }
+}

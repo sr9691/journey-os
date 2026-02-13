@@ -1,0 +1,296 @@
+/**
+ * Journey Circle Canvas - Container & Responsive Styles
+ *
+ * Provides layout, responsive scaling, and state-specific styling
+ * for the Journey Circle canvas visualization.
+ *
+ * @package DirectReach_Campaign_Builder
+ * @subpackage Journey_Circle
+ * @since 2.0.0
+ */
+
+/* =====================================================================
+ * Canvas Container
+ * ===================================================================== */
+
+.jc-canvas-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 16px;
+    box-sizing: border-box;
+}
+
+.jc-canvas-wrap canvas {
+    display: block;
+    max-width: 100%;
+    height: auto !important; /* override inline style for responsive */
+}
+
+/* =====================================================================
+ * Panel layout — sidebar canvas alongside main content
+ * ===================================================================== */
+
+.jc-layout {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+}
+
+.jc-layout__main {
+    flex: 1;
+    min-width: 0;
+}
+
+.jc-layout__sidebar {
+    flex: 0 0 380px;
+    position: sticky;
+    top: 48px;
+}
+
+/* =====================================================================
+ * Canvas card wrapper
+ * ===================================================================== */
+
+.jc-canvas-card {
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.jc-canvas-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    background: #fafafa;
+}
+
+.jc-canvas-card__title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333333;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.jc-canvas-card__actions {
+    display: flex;
+    gap: 8px;
+}
+
+.jc-canvas-card__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #555555;
+    background: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.jc-canvas-card__btn:hover {
+    background: #f5f5f5;
+    border-color: #bdbdbd;
+}
+
+.jc-canvas-card__btn:active {
+    background: #eeeeee;
+}
+
+.jc-canvas-card__btn .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
+}
+
+.jc-canvas-card__body {
+    padding: 8px;
+    display: flex;
+    justify-content: center;
+}
+
+/* =====================================================================
+ * Legend beneath canvas
+ * ===================================================================== */
+
+.jc-canvas-legend {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    padding: 10px 16px 14px;
+    border-top: 1px solid #f0f0f0;
+}
+
+.jc-canvas-legend__item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #666666;
+}
+
+.jc-canvas-legend__swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+}
+
+.jc-canvas-legend__swatch--problems {
+    background: #ff6b6b;
+}
+
+.jc-canvas-legend__swatch--solutions {
+    background: #42a5f5;
+}
+
+.jc-canvas-legend__swatch--offers {
+    background: #66bb6a;
+}
+
+/* =====================================================================
+ * Loading / empty / error overlays
+ * ===================================================================== */
+
+.jc-canvas-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 8px;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+
+.jc-canvas-overlay.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.jc-canvas-overlay__spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #e0e0e0;
+    border-top-color: #42a5f5;
+    border-radius: 50%;
+    animation: jc-spin 0.7s linear infinite;
+    margin-bottom: 12px;
+}
+
+.jc-canvas-overlay__text {
+    font-size: 13px;
+    color: #757575;
+}
+
+.jc-canvas-overlay__error {
+    color: #e53935;
+    font-weight: 500;
+}
+
+@keyframes jc-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* =====================================================================
+ * Responsive breakpoints
+ * ===================================================================== */
+
+/* Tablet: stack sidebar below main */
+@media (max-width: 1024px) {
+    .jc-layout {
+        flex-direction: column;
+    }
+
+    .jc-layout__sidebar {
+        flex: none;
+        width: 100%;
+        position: static;
+    }
+
+    .jc-canvas-wrap {
+        max-width: 500px;
+    }
+}
+
+/* Small tablet / large phone */
+@media (max-width: 768px) {
+    .jc-canvas-wrap {
+        max-width: 400px;
+        padding: 8px;
+    }
+
+    .jc-canvas-card__header {
+        padding: 10px 12px;
+    }
+
+    .jc-canvas-legend {
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 8px 12px 12px;
+    }
+}
+
+/* Phone */
+@media (max-width: 480px) {
+    .jc-canvas-wrap {
+        max-width: 320px;
+    }
+
+    .jc-canvas-card__actions {
+        display: none; /* simplify on small screens */
+    }
+
+    .jc-canvas-legend__item {
+        font-size: 11px;
+    }
+}
+
+/* =====================================================================
+ * WordPress admin overrides
+ * ===================================================================== */
+
+/* Ensure canvas doesn't blow out inside WP admin panels */
+.wrap .jc-canvas-wrap canvas,
+#wpbody-content .jc-canvas-wrap canvas {
+    max-width: 100%;
+}
+
+/* Align with WP admin card style */
+.postbox .jc-canvas-card {
+    border: none;
+    box-shadow: none;
+}
+
+/* =====================================================================
+ * Print styles
+ * ===================================================================== */
+
+@media print {
+    .jc-canvas-card__actions {
+        display: none;
+    }
+
+    .jc-canvas-card {
+        border: 1px solid #cccccc;
+        box-shadow: none;
+    }
+}

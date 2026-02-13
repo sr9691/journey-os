@@ -1,0 +1,941 @@
+/**
+ * Journey Circle Creator - Steps 4-6 Styles
+ * 
+ * Industry Selection, Primary Problem, Problem Title Selection
+ * 
+ * @package DirectReach
+ * @subpackage JourneyCircle
+ * @since 2.0.0
+ */
+
+/* ==========================================================================
+   STEP HEADERS
+   ========================================================================== */
+
+.jc-step-header {
+    margin-bottom: 24px;
+}
+
+.jc-step-header h3 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 8px 0;
+}
+
+.jc-step-description {
+    font-size: 0.95rem;
+    color: #64748b;
+    line-height: 1.6;
+    margin: 0;
+}
+
+.jc-step-description strong {
+    color: #1e293b;
+}
+
+/* ==========================================================================
+   STEP 4: INDUSTRY SELECTOR
+   ========================================================================== */
+
+.jc-industry-selector {
+    max-width: 900px;
+}
+
+.jc-industry-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.jc-industry-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.jc-industry-search {
+    position: relative;
+    flex: 1;
+    max-width: 300px;
+}
+
+.jc-industry-search i {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+}
+
+.jc-search-input {
+    width: 100%;
+    padding: 10px 12px 10px 38px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.jc-search-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.jc-selected-count {
+    font-size: 0.9rem;
+    color: #64748b;
+    padding: 8px 0;
+    border-bottom: 1px solid #e2e8f0;
+    margin-bottom: 16px;
+}
+
+.jc-selected-count span {
+    font-weight: 600;
+    color: #3b82f6;
+}
+
+/* Industry List */
+.jc-industry-list {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 8px;
+    background: #f8fafc;
+}
+
+.jc-industry-category {
+    background: #ffffff;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    transition: border-color 0.2s;
+}
+
+.jc-industry-category:last-child {
+    margin-bottom: 0;
+}
+
+.jc-industry-category:hover {
+    border-color: #cbd5e1;
+}
+
+.jc-category-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #ffffff;
+}
+
+.jc-category-name {
+    font-weight: 500;
+    color: #1e293b;
+}
+
+.jc-category-toggle {
+    background: none;
+    border: none;
+    padding: 4px 8px;
+    cursor: pointer;
+    color: #64748b;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.jc-category-toggle:hover {
+    background: #f1f5f9;
+}
+
+/* Subcategory List */
+.jc-subcategory-list {
+    display: none;
+    padding: 0 16px 12px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+}
+
+.jc-subcategory-list.jc-expanded {
+    display: block;
+}
+
+.jc-subcategory-item {
+    display: block;
+    padding: 8px 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.jc-subcategory-item:last-child {
+    border-bottom: none;
+}
+
+.jc-subcategory-name {
+    color: #475569;
+    font-size: 0.9rem;
+}
+
+/* Selected Industries Display */
+.jc-selected-industries-display {
+    margin-top: 24px;
+    padding: 16px;
+    background: #f8fafc;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+}
+
+.jc-selected-industries-display h4 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #64748b;
+    margin: 0 0 12px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.jc-selected-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.jc-selected-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: #3b82f6;
+    color: #ffffff;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.jc-remove-tag {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: #ffffff;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.7rem;
+    transition: background-color 0.2s;
+}
+
+.jc-remove-tag:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.jc-empty-selection {
+    color: #94a3b8;
+    font-style: italic;
+}
+
+/* ==========================================================================
+   STEP 5: PRIMARY PROBLEM SELECTOR
+   ========================================================================== */
+
+.jc-primary-problem-selector {
+    max-width: 900px;
+}
+
+.jc-problem-recommendations {
+    margin-bottom: 24px;
+}
+
+.jc-problem-recommendations h4 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 8px 0;
+}
+
+.jc-problem-recommendations h4 i {
+    color: #f59e0b;
+}
+
+.jc-ai-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    color: #ffffff;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.jc-ai-badge i {
+    color: #ffffff !important;
+    font-size: 0.65rem;
+}
+
+.jc-help-text {
+    font-size: 0.85rem;
+    color: #64748b;
+    margin-bottom: 16px;
+    display: block;
+}
+
+/* Problem List */
+.jc-problem-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.jc-problem-card {
+    background: #ffffff;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.jc-problem-card:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.jc-problem-card.jc-selected {
+    border-color: #3b82f6;
+    background: linear-gradient(135deg, #eff6ff, #f8fafc);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+.jc-problem-card .jc-radio-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    cursor: pointer;
+}
+
+.jc-problem-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    flex: 1;
+}
+
+.jc-problem-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: #f1f5f9;
+    color: #64748b;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.jc-problem-card.jc-selected .jc-problem-number {
+    background: #3b82f6;
+    color: #ffffff;
+}
+
+.jc-problem-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.jc-problem-title {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: #1e293b;
+    line-height: 1.4;
+}
+
+.jc-problem-category {
+    font-size: 0.8rem;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.jc-problem-category i {
+    font-size: 0.7rem;
+}
+
+/* Selected Primary Display */
+.jc-selected-primary-display {
+    margin-top: 24px;
+}
+
+.jc-no-selection {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 32px;
+    background: #f8fafc;
+    border: 2px dashed #e2e8f0;
+    border-radius: 12px;
+    color: #94a3b8;
+}
+
+.jc-no-selection i {
+    font-size: 1.2rem;
+}
+
+.jc-selected-primary-card {
+    padding: 20px;
+    background: linear-gradient(135deg, #fef3c7, #fff7ed);
+    border: 2px solid #f59e0b;
+    border-radius: 12px;
+}
+
+.jc-primary-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    background: #f59e0b;
+    color: #ffffff;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+}
+
+.jc-primary-badge i {
+    font-size: 0.7rem;
+}
+
+.jc-selected-primary-card h4 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 8px 0;
+    line-height: 1.4;
+}
+
+/* ==========================================================================
+   STEP 6: PROBLEM TITLE SELECTOR
+   ========================================================================== */
+
+.jc-problem-title-selector {
+    max-width: 1000px;
+}
+
+/* Selection Status */
+.jc-selection-status {
+    margin-bottom: 24px;
+}
+
+.jc-status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: 12px;
+}
+
+.jc-status-indicator i {
+    font-size: 1.1rem;
+}
+
+.jc-status-incomplete {
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+}
+
+.jc-status-complete {
+    background: #dcfce7;
+    color: #16a34a;
+    border: 1px solid #bbf7d0;
+}
+
+.jc-status-error {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+.jc-selection-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.jc-progress-bar {
+    flex: 1;
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.jc-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6, #60a5fa);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.jc-progress-text {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #64748b;
+    min-width: 40px;
+    text-align: right;
+}
+
+/* Problem Title Grid */
+.jc-problem-title-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 768px) {
+    .jc-problem-title-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.jc-problem-title-card {
+    position: relative;
+    background: #ffffff;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.jc-problem-title-card:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.jc-problem-title-card.jc-selected {
+    border-color: #3b82f6;
+    background: linear-gradient(135deg, #eff6ff, #f8fafc);
+}
+
+.jc-problem-title-card.jc-primary {
+    border-color: #f59e0b;
+    background: linear-gradient(135deg, #fffbeb, #fef3c7);
+}
+
+.jc-problem-title-card .jc-checkbox-label {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+}
+
+.jc-card-content {
+    padding-right: 40px;
+}
+
+.jc-primary-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: #f59e0b;
+    color: #ffffff;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+
+.jc-primary-indicator i {
+    font-size: 0.6rem;
+}
+
+.jc-position-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 6px;
+    background: #3b82f6;
+    color: #ffffff;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.jc-problem-title-text {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #1e293b;
+    line-height: 1.5;
+    margin: 0 0 8px 0;
+}
+
+.jc-category-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: #f1f5f9;
+    color: #64748b;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.jc-category-tag i {
+    font-size: 0.65rem;
+}
+
+/* Regenerate Section */
+.jc-regenerate-section {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: #f8fafc;
+    border-radius: 8px;
+    margin-bottom: 24px;
+}
+
+.jc-regenerate-btn {
+    flex-shrink: 0;
+}
+
+.jc-regenerate-section .jc-help-text {
+    margin-bottom: 0;
+}
+
+/* Selected Problems Summary */
+.jc-selected-problems-summary {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.jc-selected-problems-summary h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #64748b;
+    margin: 0 0 16px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.jc-selected-problems-summary h4 i {
+    color: #3b82f6;
+}
+
+.jc-empty-summary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 40px;
+    background: #f8fafc;
+    border: 2px dashed #e2e8f0;
+    border-radius: 8px;
+    color: #94a3b8;
+}
+
+.jc-selected-problems-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.jc-selected-problem-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    transition: all 0.2s;
+    cursor: grab;
+}
+
+.jc-selected-problem-item:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+}
+
+.jc-selected-problem-item.jc-dragging {
+    opacity: 0.5;
+    background: #e2e8f0;
+}
+
+.jc-drag-handle {
+    color: #94a3b8;
+    cursor: grab;
+}
+
+.jc-drag-handle:active {
+    cursor: grabbing;
+}
+
+.jc-position-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: #3b82f6;
+    color: #ffffff;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.jc-problem-text {
+    flex: 1;
+    font-size: 0.9rem;
+    color: #1e293b;
+    line-height: 1.4;
+}
+
+.jc-primary-tag {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    background: #f59e0b;
+    color: #ffffff;
+    border-radius: 50%;
+    font-size: 0.65rem;
+}
+
+.jc-remove-problem {
+    background: none;
+    border: none;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.jc-remove-problem:hover {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+/* ==========================================================================
+   CHECKBOX & RADIO STYLES
+   ========================================================================== */
+
+.jc-checkbox-label,
+.jc-radio-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.jc-checkbox-label input[type="checkbox"],
+.jc-radio-label input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.jc-checkbox-custom {
+    position: relative;
+    width: 20px;
+    height: 20px;
+    background: #ffffff;
+    border: 2px solid #d1d5db;
+    border-radius: 4px;
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+
+.jc-checkbox-label input[type="checkbox"]:checked + .jc-checkbox-custom {
+    background: #3b82f6;
+    border-color: #3b82f6;
+}
+
+.jc-checkbox-label input[type="checkbox"]:checked + .jc-checkbox-custom::after {
+    content: '';
+    position: absolute;
+    left: 6px;
+    top: 2px;
+    width: 5px;
+    height: 10px;
+    border: solid #ffffff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.jc-checkbox-label input[type="checkbox"]:disabled + .jc-checkbox-custom {
+    background: #f3f4f6;
+    border-color: #d1d5db;
+    cursor: not-allowed;
+}
+
+.jc-radio-custom {
+    position: relative;
+    width: 20px;
+    height: 20px;
+    background: #ffffff;
+    border: 2px solid #d1d5db;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+
+.jc-radio-label input[type="radio"]:checked + .jc-radio-custom {
+    background: #ffffff;
+    border-color: #3b82f6;
+}
+
+.jc-radio-label input[type="radio"]:checked + .jc-radio-custom::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    width: 8px;
+    height: 8px;
+    background: #3b82f6;
+    border-radius: 50%;
+}
+
+/* ==========================================================================
+   BUTTON STYLES
+   ========================================================================== */
+
+.jc-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+}
+
+.jc-btn-primary {
+    background: #3b82f6;
+    color: #ffffff;
+}
+
+.jc-btn-primary:hover {
+    background: #2563eb;
+}
+
+.jc-btn-secondary {
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+}
+
+.jc-btn-secondary:hover {
+    background: #e2e8f0;
+    border-color: #cbd5e1;
+}
+
+.jc-btn i {
+    font-size: 0.85rem;
+}
+
+/* ==========================================================================
+   RESPONSIVE STYLES
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    .jc-industry-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .jc-industry-actions {
+        justify-content: center;
+    }
+
+    .jc-industry-search {
+        max-width: none;
+    }
+
+    .jc-regenerate-section {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .jc-selected-problem-item {
+        padding: 10px 12px;
+    }
+
+    .jc-problem-text {
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .jc-step-header h3 {
+        font-size: 1.25rem;
+    }
+
+    .jc-industry-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .jc-industry-actions .jc-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .jc-problem-card {
+        padding: 12px;
+    }
+
+    .jc-problem-content {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .jc-problem-number {
+        align-self: flex-start;
+    }
+}

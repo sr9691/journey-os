@@ -1,0 +1,211 @@
+/**
+ * Journey Circle Admin Styles
+ *
+ * @package Journey_Circle
+ */
+
+/* Dashboard Styles */
+.jc-dashboard {
+    max-width: 1200px;
+}
+
+.jc-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin: 20px 0 30px 0;
+}
+
+.jc-stat-card {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    text-align: center;
+    transition: box-shadow 0.3s;
+}
+
+.jc-stat-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.jc-stat-card h3 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #50575e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.jc-stat-number {
+    font-size: 48px;
+    font-weight: bold;
+    color: #2271b1;
+    margin: 10px 0 15px 0;
+    line-height: 1;
+}
+
+.jc-stat-card .button {
+    margin-top: 10px;
+}
+
+/* Quick Actions */
+.jc-quick-actions,
+.jc-getting-started {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.jc-quick-actions h2,
+.jc-getting-started h2 {
+    margin-top: 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #c3c4c7;
+}
+
+.jc-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.jc-actions-grid .button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 24px;
+    height: auto;
+}
+
+/* Getting Started */
+.jc-getting-started ol {
+    margin: 15px 0 0 20px;
+    line-height: 1.8;
+}
+
+.jc-getting-started li {
+    margin-bottom: 10px;
+}
+
+/* Journey Circle Visualization */
+.jc-circle-canvas {
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    background: #fff;
+}
+
+/* Form Styles */
+.jc-form-section {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.jc-form-section h3 {
+    margin-top: 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #c3c4c7;
+}
+
+.jc-form-row {
+    margin-bottom: 15px;
+}
+
+.jc-form-row label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+
+.jc-form-row input[type="text"],
+.jc-form-row input[type="url"],
+.jc-form-row textarea,
+.jc-form-row select {
+    width: 100%;
+    max-width: 500px;
+}
+
+.jc-form-row textarea {
+    min-height: 100px;
+}
+
+/* Button Styles */
+.jc-button-primary {
+    background-color: #2271b1;
+    color: #fff;
+    border-color: #2271b1;
+}
+
+.jc-button-primary:hover {
+    background-color: #135e96;
+    border-color: #135e96;
+}
+
+/* Loading States */
+.jc-loading {
+    position: relative;
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.jc-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
+    border: 2px solid #2271b1;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: jc-spin 0.6s linear infinite;
+}
+
+@keyframes jc-spin {
+    to {
+        transform: translate(-50%, -50%) rotate(360deg);
+    }
+}
+
+/* Notices */
+.jc-notice {
+    padding: 12px 20px;
+    margin: 15px 0;
+    border-left: 4px solid #72aee6;
+    background: #f0f6fc;
+}
+
+.jc-notice-success {
+    border-left-color: #00a32a;
+    background: #f0f6fc;
+}
+
+.jc-notice-error {
+    border-left-color: #d63638;
+    background: #fcf0f1;
+}
+
+.jc-notice-warning {
+    border-left-color: #dba617;
+    background: #fcf9e8;
+}
+
+/* Responsive */
+@media screen and (max-width: 782px) {
+    .jc-stats-grid,
+    .jc-actions-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .jc-stat-number {
+        font-size: 36px;
+    }
+}
