@@ -285,10 +285,136 @@
 
         _fmtOutline(outline) {
             if(!outline) return '<p style="color:#aaa">No outline generated.</p>';
-            try { var p=typeof outline==='string'?JSON.parse(outline):outline; if(typeof p==='object') return '<pre style="white-space:pre-wrap;font-family:inherit;margin:0">'+esc(JSON.stringify(p,null,2))+'</pre>'; } catch(e){}
+
+            // Try to parse as JSON
+            var parsed=null;
+            try { parsed=typeof outline==='string'?JSON.parse(outline):outline; } catch(e){}
+
+            // If it's a JSON object/array, render as structured bullets
+            if(parsed && typeof parsed==='object') return this._renderOutlineObj(parsed);
+
+            // Plain text fallback — parse markdown-style headings and bullets
             var lines=String(outline).split('\n'),html='';
-            lines.forEach(function(line){ var t=line.trim(); if(!t){html+='<br>';return;} if(/^#{1,3}\s/.test(t)){var lv=t.match(/^(#+)/)[1].length;html+='<div style="font-weight:700;font-size:'+(18-lv*2)+'px;margin:12px 0 6px;color:#333">'+esc(t.replace(/^#+\s*/,''))+'</div>';} else if(/^[-*\u2022]\s/.test(t)){html+='<div style="padding-left:20px;margin:4px 0"><span style="color:#42A5F5;margin-right:8px">\u2022</span>'+esc(t.replace(/^[-*\u2022]\s*/,''))+'</div>';} else if(/^\d+[.)]\s/.test(t)){var n=t.match(/^(\d+)/)[1];html+='<div style="padding-left:20px;margin:4px 0"><span style="color:#42A5F5;font-weight:600;margin-right:8px">'+n+'.</span>'+esc(t.replace(/^\d+[.)]\s*/,''))+'</div>';} else {html+='<div style="margin:4px 0">'+esc(t)+'</div>';} });
+            lines.forEach(function(line){
+                var t=line.trim();
+                if(!t){html+='<br>';return;}
+                // Strip markdown bold/italic for display but keep the text
+                var display = t.replace(/\*\*\*(.*?)\*\*\*/g,'$1').replace(/\*\*(.*?)\*\*/g,'$1').replace(/\*(.*?)\*/g,'$1');
+                // Headings: # or ## or ###
+                if(/^#{1,3}\s/.test(t)){
+                    var lv=t.match(/^(#+)/)[1].length;
+                    var text=display.replace(/^#+\s*/,'');
+                    html+='<div style="font-weight:700;font-size:'+(18-lv*2)+'px;margin:12px 0 6px;color:#333">'+esc(text)+'</div>';
+                }
+                // Bullets: - or * or • (but NOT ** which is bold markdown)
+                else if(/^[-\u2022]\s/.test(t) || /^\*\s/.test(t)){
+                    var text=display.replace(/^[-\u2022]\s*/,'').replace(/^\*\s*/,'');
+                    html+='<div style="padding-left:20px;margin:4px 0"><span style="color:#42A5F5;margin-right:8px">\u2022</span>'+esc(text)+'</div>';
+                }
+                // Sub-bullets: indented with spaces/tabs + - or * or •
+                else if(/^\s{2,}[-*\u2022]\s/.test(line)){
+                    var text=display.replace(/^\s+[-*\u2022]\s*/,'');
+                    html+='<div style="padding-left:40px;margin:3px 0"><span style="color:#90CAF9;margin-right:8px">\u25E6</span>'+esc(text)+'</div>';
+                }
+                // Numbered items: 1. or 1)
+                else if(/^\d+[.)]\s/.test(t)){
+                    var n=t.match(/^(\d+)/)[1];
+                    var text=display.replace(/^\d+[.)]\s*/,'');
+                    html+='<div style="padding-left:20px;margin:4px 0"><span style="color:#42A5F5;font-weight:600;margin-right:8px">'+n+'.</span>'+esc(text)+'</div>';
+                }
+                // Bold lines (likely section headers): **text** or **text:**
+                else if(/^\*\*/.test(t)){
+                    var text=display;
+                    html+='<div style="font-weight:700;font-size:14px;margin:12px 0 4px;color:#333">'+esc(text)+'</div>';
+                }
+                // Regular text
+                else {html+='<div style="margin:4px 0">'+esc(display)+'</div>';}
+            });
             return html;
+        }
+
+        /**
+         * Render a JSON outline object as a structured bulleted list.
+         * Handles all known formats: article/blog (sections), presentation (slides), linkedin, infographic.
+         */
+        _renderOutlineObj(obj) {
+            var h='';
+
+            // ---- Array: could be presentation slides OR an unwrapped sections array ----
+            if(Array.isArray(obj)) {
+                // Detect if this is truly a presentation (slides have slide_title or slide_number)
+                var looksLikeSlides=obj.length>0 && obj.some(function(item){ return item.slide_title || item.slide_number || item.speaker_notes; });
+
+                if(looksLikeSlides) {
+                    // Presentation slides
+                    obj.forEach(function(slide,i){
+                        var title=slide.slide_title||slide.title||('Slide '+(i+1));
+                        h+='<div style="margin-bottom:14px">';
+                        h+='<div style="font-weight:700;font-size:14px;color:#333;margin-bottom:4px">'+(slide.slide_number||(i+1))+'. '+esc(title)+'</div>';
+                        if(slide.section) h+='<div style="padding-left:20px;font-size:12px;color:#888;margin-bottom:4px"><em>'+esc(slide.section)+'</em></div>';
+                        var pts=slide.key_points||slide.bullet_points||slide.points||[];
+                        if(pts.length) pts.forEach(function(pt){ h+='<div style="padding-left:20px;margin:3px 0"><span style="color:#42A5F5;margin-right:8px">\u2022</span>'+esc(typeof pt==='string'?pt:(pt.text||pt.point||JSON.stringify(pt)))+'</div>'; });
+                        if(slide.speaker_notes) h+='<div style="padding-left:20px;font-size:12px;color:#999;margin-top:4px"><i class="fas fa-comment-dots" style="margin-right:4px"></i>'+esc(slide.speaker_notes)+'</div>';
+                        h+='</div>';
+                    });
+                    return h;
+                }
+
+                // Otherwise treat as unwrapped sections array (article/blog/infographic returned without wrapper)
+                return this._renderOutlineObj({ sections: obj });
+            }
+
+            // ---- Title / headline ----
+            if(obj.title) h+='<div style="font-weight:700;font-size:16px;color:#1e293b;margin-bottom:4px">'+esc(obj.title)+'</div>';
+            if(obj.subtitle) h+='<div style="font-size:13px;color:#666;margin-bottom:8px">'+esc(obj.subtitle)+'</div>';
+            if(obj.meta_description) h+='<div style="font-size:13px;color:#666;font-style:italic;margin-bottom:12px">'+esc(obj.meta_description)+'</div>';
+
+            // ---- LinkedIn post ----
+            if(obj.hook) {
+                h+='<div style="font-weight:600;font-size:14px;color:#333;margin-bottom:8px">'+esc(obj.hook)+'</div>';
+                var body=obj.body||[];
+                if(Array.isArray(body)) body.forEach(function(p){ h+='<div style="padding-left:20px;margin:4px 0"><span style="color:#42A5F5;margin-right:8px">\u2022</span>'+esc(p)+'</div>'; });
+                if(obj.call_to_action) h+='<div style="margin-top:8px;font-weight:600;color:#43a047"><i class="fas fa-bullhorn" style="margin-right:6px"></i>'+esc(obj.call_to_action)+'</div>';
+                if(obj.hashtags&&obj.hashtags.length) h+='<div style="margin-top:6px;font-size:12px;color:#1976d2">'+obj.hashtags.map(function(t){return esc(t);}).join(' ')+'</div>';
+                return h;
+            }
+
+            // ---- Sections-based (article, blog, infographic) ----
+            var sections=obj.sections||[];
+            if(sections.length) {
+                sections.forEach(function(sec,i){
+                    var heading=sec.heading||sec.title||('Section '+(i+1));
+                    h+='<div style="margin-bottom:14px">';
+                    h+='<div style="font-weight:700;font-size:14px;color:#333;margin-bottom:4px">'+(i+1)+'. '+esc(heading)+'</div>';
+                    if(sec.description) h+='<div style="padding-left:20px;font-size:13px;color:#555;margin-bottom:4px">'+esc(sec.description)+'</div>';
+                    // Paragraphs
+                    var paras=sec.paragraphs||sec.points||sec.key_points||sec.bullet_points||[];
+                    if(Array.isArray(paras)) paras.forEach(function(p){ h+='<div style="padding-left:20px;margin:3px 0"><span style="color:#42A5F5;margin-right:8px">\u2022</span>'+esc(typeof p==='string'?p:(p.text||p.point||JSON.stringify(p)))+'</div>'; });
+                    // Key takeaway
+                    if(sec.key_takeaway) h+='<div style="padding-left:20px;margin-top:4px;font-size:12px;color:#f57c00"><i class="fas fa-lightbulb" style="margin-right:4px"></i><strong>Key takeaway:</strong> '+esc(sec.key_takeaway)+'</div>';
+                    // Infographic data points
+                    var dp=sec.data_points||[];
+                    if(dp.length) dp.forEach(function(d){ h+='<div style="padding-left:20px;margin:3px 0"><span style="color:#66bb6a;margin-right:8px">\u25B8</span><strong>'+esc(d.label||'')+'</strong>: '+esc(d.value||'')+'</div>'; });
+                    h+='</div>';
+                });
+            }
+
+            // CTA
+            if(obj.call_to_action) h+='<div style="margin-top:8px;font-weight:600;color:#43a047"><i class="fas fa-bullhorn" style="margin-right:6px"></i>'+esc(obj.call_to_action)+'</div>';
+            if(obj.footer) h+='<div style="margin-top:6px;font-size:12px;color:#666">'+esc(obj.footer)+'</div>';
+
+            // Fallback: if we got an object but didn't match any known shape, render key-value pairs
+            if(!h) {
+                Object.keys(obj).forEach(function(key){
+                    var val=obj[key];
+                    h+='<div style="margin-bottom:8px"><strong style="color:#333">'+esc(key.replace(/_/g,' '))+':</strong> ';
+                    if(Array.isArray(val)) { h+='<ul style="margin:4px 0 4px 20px;padding:0;list-style:disc">'; val.forEach(function(v){ h+='<li style="margin:2px 0">'+esc(typeof v==='string'?v:JSON.stringify(v))+'</li>'; }); h+='</ul>'; }
+                    else { h+=esc(typeof val==='string'?val:JSON.stringify(val)); }
+                    h+='</div>';
+                });
+            }
+
+            return h;
         }
 
         async _revOutline(gi) {

@@ -510,7 +510,7 @@
                 + '<div style="width:300px;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden">'
                 + '<div id="jc-img-progress-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#42A5F5,#66BB6A);border-radius:3px;transition:width 0.4s ease"></div>'
                 + '</div>'
-                + '<div style="margin-top:12px;font-size:12px;color:#78909C">Using Nano Banana Pro for professional visuals</div>'
+                + '<div style="margin-top:12px;font-size:12px;color:#78909C">Generating professional visuals for your slides</div>'
                 + '</div>';
             document.body.appendChild(el);
             return el;

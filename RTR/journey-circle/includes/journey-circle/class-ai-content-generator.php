@@ -1066,6 +1066,8 @@ PROMPT;
         $industries_str = $this->format_industries( $args['industries'] ?? array() );
         $existing       = $args['existing_outline'] ?? '';
         $feedback       = sanitize_text_field( $args['feedback'] ?? '' );
+        $focus          = sanitize_text_field( $args['focus'] ?? '' );
+        $focus_instr    = sanitize_text_field( $args['focus_instruction'] ?? '' );
 
         $format_desc = array(
             'article_long'   => 'a detailed long-form article (1500-2500 words)',
@@ -1078,12 +1080,41 @@ PROMPT;
 
         $format_label = $format_desc[ $format ] ?? 'a content piece';
 
+        // Build the focus angle instruction.
+        $focus_angle = '';
+        if ( ! empty( $focus_instr ) ) {
+            $focus_angle = "\nContent angle: {$focus_instr}\n";
+        } elseif ( $focus === 'problem' ) {
+            $focus_angle = "\nContent angle: Focus on PROBLEM — pain points, challenges, consequences, and urgency.\n";
+        } elseif ( $focus === 'solution' ) {
+            $focus_angle = "\nContent angle: Focus on SOLUTION — approach, benefits, implementation, and ROI.\n";
+        }
+
+        // =====================================================================
+        // Format-specific JSON schemas for the outline.
+        // These must match what the JS _renderOutlineObj() method expects.
+        // =====================================================================
+        $json_schemas = array(
+            'linkedin_post' => '{"hook": "attention-grabbing opening line", "body": ["paragraph 1 summary", "paragraph 2 summary", "paragraph 3 summary"], "call_to_action": "what reader should do next", "hashtags": ["#tag1", "#tag2", "#tag3"]}',
+            'presentation'  => '[{"slide_number": 1, "slide_title": "Title Slide", "section": "Title Slide", "key_points": ["point 1", "point 2"], "speaker_notes": "notes for presenter"}, {"slide_number": 2, "slide_title": "...", "section": "Problem Definition", "key_points": ["..."], "speaker_notes": "..."}]',
+            'infographic'   => '{"title": "main title", "subtitle": "subtitle", "sections": [{"heading": "section heading", "description": "what this section covers", "data_points": [{"label": "stat label", "value": "stat value"}]}], "call_to_action": "next step for reader"}',
+        );
+
+        // Default schema for article/blog formats.
+        $default_schema = '{"title": "compelling headline", "meta_description": "SEO meta description (150-160 chars)", "sections": [{"heading": "section heading", "paragraphs": ["key point or topic to cover in this section", "another key point"], "key_takeaway": "main insight from this section"}], "call_to_action": "what reader should do next"}';
+
+        $schema = $json_schemas[ $format ] ?? $default_schema;
+
         if ( ! empty( $existing ) && ! empty( $feedback ) ) {
-            // Revision prompt
-            $prompt = "You previously generated this content outline:\n\n{$existing}\n\n";
+            // Serialize existing outline to string if it's an array/object.
+            $existing_str = is_string( $existing ) ? $existing : wp_json_encode( $existing, JSON_PRETTY_PRINT );
+
+            // Revision prompt — must return same JSON format.
+            $prompt  = "You previously generated this content outline:\n\n{$existing_str}\n\n";
             $prompt .= "The user provided this feedback: \"{$feedback}\"\n\n";
-            $prompt .= "Please revise the outline based on the feedback. Keep the same format and structure but incorporate the requested changes.\n";
-            $prompt .= "Return ONLY the revised outline text, no explanations.";
+            $prompt .= "Please revise the outline based on the feedback. Keep the same JSON structure but incorporate the requested changes.\n";
+            $prompt .= $focus_angle;
+            $prompt .= "\nReturn ONLY valid JSON matching the original structure. No markdown, no explanations, no code fences.";
         } else {
             $prompt  = "Create a detailed content outline for {$format_label}.\n\n";
             $prompt .= "Topic/Problem: {$problem_title}\n";
@@ -1091,25 +1122,59 @@ PROMPT;
             if ( ! empty( $industries_str ) ) {
                 $prompt .= "Target Industries: {$industries_str}\n";
             }
+            $prompt .= $focus_angle;
             if ( ! empty( $brain_summary ) ) {
                 $prompt .= "\nContext from client resources:\n{$brain_summary}\n";
             }
-            $prompt .= "\nCreate a structured outline with:\n";
-            $prompt .= "- A compelling headline/title\n";
-            $prompt .= "- Section headings with brief descriptions of what each section will cover\n";
-            $prompt .= "- Key points to address in each section\n";
-            $prompt .= "- Suggested data points or examples to include\n";
-            $prompt .= "- A strong call-to-action section\n\n";
-            $prompt .= "Return ONLY the outline text, well-formatted with clear hierarchy.";
+            $prompt .= "\nCreate a comprehensive, detailed outline. Each section should have specific, descriptive key points — not generic placeholders.\n";
+            $prompt .= "Include at least 4-6 sections with 2-4 key points each.\n\n";
+            $prompt .= "Return ONLY valid JSON in this exact format (no markdown, no code fences, no explanations):\n";
+            $prompt .= $schema;
         }
 
-        $result = $this->call_gemini_api( $prompt );
+        $result = $this->call_gemini_api( $prompt, array(
+            'responseMimeType' => 'application/json',
+        ) );
 
         if ( is_wp_error( $result ) ) {
             return $result;
         }
 
-        return array( 'outline' => trim( $result ) );
+        // Normalize the result — ensure it's a valid JSON string for the client.
+        $outline = trim( $result );
+
+        // If $result is already decoded (array/object), re-encode it.
+        if ( is_array( $outline ) || is_object( $outline ) ) {
+            $outline = wp_json_encode( $outline );
+        }
+
+        // Clean common Gemini JSON quirks: trailing commas before ] or }.
+        $outline = preg_replace( '/,\s*([\]\}])/', '$1', $outline );
+
+        // Strip markdown code fences if Gemini wrapped the JSON in them.
+        $outline = preg_replace( '/^```(?:json)?\s*/i', '', $outline );
+        $outline = preg_replace( '/\s*```\s*$/', '', $outline );
+        $outline = trim( $outline );
+
+        // Validate the JSON actually parses and has content.
+        $decoded = json_decode( $outline, true );
+        if ( json_last_error() !== JSON_ERROR_NONE ) {
+            // If Gemini returned non-JSON despite the mime type, wrap it as a text outline.
+            // The JS _fmtOutline() text fallback will handle it.
+            error_log( 'Journey Circle: Outline response was not valid JSON after cleanup. JSON error: ' . json_last_error_msg() );
+            return array( 'outline' => $outline );
+        }
+
+        // Re-encode the cleaned/validated JSON to ensure consistent output.
+        $outline = wp_json_encode( $decoded );
+
+        // Ensure sections-based outlines actually have sections.
+        if ( is_array( $decoded ) && ! isset( $decoded[0] ) && isset( $decoded['title'] ) && ( ! isset( $decoded['sections'] ) || empty( $decoded['sections'] ) ) ) {
+            // Re-encode as plain text so the text parser can try, rather than showing only a title.
+            error_log( 'Journey Circle: Outline JSON had title but empty sections, returning raw for text parsing.' );
+        }
+
+        return array( 'outline' => $outline );
     }
 
     /**
