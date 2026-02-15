@@ -104,8 +104,7 @@
             if (this.currentItem && panel) { grid.style.display='none'; panel.style.display='block'; return; }
             grid.style.display=''; if(panel) panel.style.display='none';
             var pT=this._cntFocus(FP),sT=this._cntFocus(FS),gT=pT+sT,mx=this.selectedProblems.length*CT_LIST.length*2,self=this;
-            var csBtn = (window.JCColorSchemeSelector) ? window.JCColorSchemeSelector.buildTriggerHtml() : '';
-            var h='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px 18px;margin-bottom:16px;background:#fff;border-radius:10px;border:1px solid #e2e5eb;box-shadow:0 1px 3px rgba(0,0,0,.06)"><div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><span style="font-size:15px;font-weight:700;color:#1a1d26">Content Assets</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:100px;background:#fef2f2;color:#dc4545"><i class="fas fa-exclamation-circle"></i> '+pT+' Problem</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:100px;background:#eff6ff;color:#3b82f6"><i class="fas fa-lightbulb"></i> '+sT+' Solution</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:100px;background:'+(gT>0?'#f0fdf4':'#f3f4f8')+';color:'+(gT>0?'#16a34a':'#8c91a0')+'"><i class="fas fa-'+(gT>0?'check-circle':'tasks')+'"></i> '+gT+' of '+mx+' created</span></div>'+csBtn+'</div>';
+            var h='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px 18px;margin-bottom:16px;background:#fff;border-radius:10px;border:1px solid #e2e5eb;box-shadow:0 1px 3px rgba(0,0,0,.06)"><div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><span style="font-size:15px;font-weight:700;color:#1a1d26">Content Assets</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:100px;background:#fef2f2;color:#dc4545"><i class="fas fa-exclamation-circle"></i> '+pT+' Problem</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:100px;background:#eff6ff;color:#3b82f6"><i class="fas fa-lightbulb"></i> '+sT+' Solution</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:100px;background:'+(gT>0?'#f0fdf4':'#f3f4f8')+';color:'+(gT>0?'#16a34a':'#8c91a0')+'"><i class="fas fa-'+(gT>0?'check-circle':'tasks')+'"></i> '+gT+' of '+mx+' created</span></div></div>';
             this.selectedProblems.forEach(function(p,i){ h+=self._cardHtml(p,i); });
             grid.innerHTML=h;
             this._bindGrid(grid);
@@ -123,7 +122,9 @@
               +this._rowHtml(pid,FP)+this._rowHtml(pid,FS)
               +'<div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid #eef0f4">'
               +(c.total>0?'<button type="button" class="button button-small jc-view-created-btn" data-problem-id="'+pid+'" style="font-size:12px"><i class="fas fa-eye"></i> View Created</button>':'')
-              +'<button type="button" class="button button-small button-primary jc-generate-btn" data-problem-id="'+pid+'" style="font-size:12px" disabled><i class="fas fa-magic"></i> Generate Selected</button>'
+              +'<span style="flex:1"></span>'
+              +((window.JCColorSchemeSelector)?'<button type="button" class="jc-cs-trigger-btn jc-cs-card-trigger" title="Change color scheme" style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;font-size:13px;font-weight:600;border-radius:8px;border:1.5px solid #e0e0e0;background:#fff;color:#5a6070;cursor:pointer;transition:all .2s ease"><i class="fas fa-palette" style="font-size:14px;color:#7c3aed"></i><span>Colors</span></button>':'')
+              +'<button type="button" class="button button-primary jc-generate-btn" data-problem-id="'+pid+'" style="display:inline-flex;align-items:center;gap:7px;padding:8px 18px;font-size:13px;font-weight:600;border-radius:8px" disabled><i class="fas fa-magic" style="font-size:14px"></i> Generate Selected</button>'
               +'</div></div></div></div>';
         }
 
@@ -148,7 +149,7 @@
             grid.querySelectorAll('.jc-view-created-btn').forEach(function(btn){ btn.addEventListener('click',function(){ self._openCreated(btn.dataset.problemId); }); });
         }
 
-        _updateGenBtn(grid,pid) { var btn=grid.querySelector('.jc-generate-btn[data-problem-id="'+pid+'"]'); if(!btn)return; var n=grid.querySelectorAll('.jc-ct-check[data-problem-id="'+pid+'"]:checked').length; btn.disabled=n===0; btn.innerHTML=n>0?'<i class="fas fa-magic"></i> Generate Selected ('+n+')':'<i class="fas fa-magic"></i> Generate Selected'; }
+        _updateGenBtn(grid,pid) { var btn=grid.querySelector('.jc-generate-btn[data-problem-id="'+pid+'"]'); if(!btn)return; var n=grid.querySelectorAll('.jc-ct-check[data-problem-id="'+pid+'"]:checked').length; btn.disabled=n===0; btn.innerHTML=n>0?'<i class="fas fa-magic" style="font-size:14px"></i> Generate Selected ('+n+')':'<i class="fas fa-magic" style="font-size:14px"></i> Generate Selected'; }
 
         // =================================================================
         // BATCH START
