@@ -292,10 +292,19 @@
          * Select service area
          */
         async selectServiceArea(serviceAreaId) {
+            // Detect if switching to a DIFFERENT service area
+            const currentSA = this.workflow.getState('serviceAreaId');
+            const isSwitching = currentSA && currentSA !== serviceAreaId;
+
             this.selectedServiceAreaId = serviceAreaId;
             
             // Update UI
             this.highlightSelectedServiceArea();
+
+            // If switching service areas, clear steps 4-11 data from old SA
+            if (isSwitching) {
+                this.workflow.clearServiceAreaData();
+            }
             
             // Save to workflow state
             this.workflow.updateState('serviceAreaId', serviceAreaId);

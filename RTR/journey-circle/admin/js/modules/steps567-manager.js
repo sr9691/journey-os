@@ -44,12 +44,15 @@
         }
 
         init() {
-            // Load saved state
+            // Load saved state — including AI suggestions persisted in workflow
             const state = this.workflow.getState();
             if (state) {
                 this.primaryProblemId = state.primaryProblemId || null;
                 this.selectedProblems = state.selectedProblems || [];
                 this.selectedSolutions = state.selectedSolutions || {};
+                // Restore AI suggestion lists from persisted state
+                this.problemSuggestions = state.problemSuggestions || [];
+                this.solutionSuggestions = state.solutionSuggestions || {};
             }
 
             // Init guards to prevent double-initialization
@@ -64,13 +67,37 @@
                 if (step === 7) this.initStep7();
             });
 
+            // Listen for state restoration (e.g. from DB load)
+            $(document).on('jc:restoreState', (e, restoredState) => {
+                if (restoredState) {
+                    this.primaryProblemId = restoredState.primaryProblemId || null;
+                    this.selectedProblems = restoredState.selectedProblems || [];
+                    this.selectedSolutions = restoredState.selectedSolutions || {};
+                    this.problemSuggestions = restoredState.problemSuggestions || [];
+                    this.solutionSuggestions = restoredState.solutionSuggestions || {};
+                }
+            });
+
+            // Clear in-memory caches when switching service areas
+            $(document).on('jc:serviceAreaChanged', () => {
+                this.primaryProblemId = null;
+                this.selectedProblems = [];
+                this.selectedSolutions = {};
+                this.problemSuggestions = [];
+                this.solutionSuggestions = {};
+                this._step5Running = false;
+                this._step6Running = false;
+                this._step7Running = false;
+                console.log('[Steps567] Cleared caches for service area change');
+            });
+
             // If already on one of these steps, init immediately
             const currentStep = state ? state.currentStep : null;
             if (currentStep === 5) this.initStep5();
             if (currentStep === 6) this.initStep6();
             if (currentStep === 7) this.initStep7();
 
-            console.log('Steps567Manager initialized');
+            console.log('Steps567Manager initialized (problems:', this.problemSuggestions.length, 'selectedProblems:', this.selectedProblems.length, ')');
         }
 
         // =====================================================================
@@ -136,6 +163,8 @@
                         id: `prob_${i}`,
                         title: typeof t === 'string' ? t : (t.title || t.text || String(t))
                     }));
+                    // Persist suggestions so they survive page reload / browser restart
+                    this.workflow.updateState('problemSuggestions', this.problemSuggestions);
                     this.renderStep5List(list);
                 } else {
                     const errMsg = data.error || 'No suggestions generated';
@@ -249,6 +278,8 @@
                         id: `prob_${i}`,
                         title: typeof t === 'string' ? t : (t.title || t.text || String(t))
                     }));
+                    // Persist suggestions so they survive page reload / browser restart
+                    this.workflow.updateState('problemSuggestions', this.problemSuggestions);
                     this.renderStep6List(list, countEl);
                 } else {
                     throw new Error(data.error || 'No suggestions generated');
@@ -416,6 +447,8 @@
                 }
 
                 this.renderStep7(container);
+                // Persist solution suggestions so they survive reload
+                this.workflow.updateState('solutionSuggestions', this.solutionSuggestions);
             } catch (error) {
                 console.error('Solution generation error:', error);
                 container.innerHTML = `

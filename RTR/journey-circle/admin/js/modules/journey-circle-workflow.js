@@ -32,9 +32,9 @@
         /**
          * Initialize workflow
          */
-        init() {
+        async init() {
             this.bindEvents();
-            this.restoreState();
+            await this.restoreState();
             this.startAutoSave();
             this.updateUI();
             
@@ -319,7 +319,8 @@
         }
 
         /**
-         * Load state from localStorage
+         * Load state from localStorage (synchronous — used in constructor).
+         * DB fallback is handled asynchronously in restoreState().
          */
         loadState() {
             const stateKey = `dr_journey_circle_${this.config.clientId}`;
@@ -327,13 +328,24 @@
             
             if (savedState) {
                 try {
-                    return JSON.parse(savedState);
+                    const parsed = JSON.parse(savedState);
+                    if (parsed && parsed.clientId) {
+                        console.log('[JC Workflow] State loaded from localStorage');
+                        return parsed;
+                    }
                 } catch (e) {
                     console.error('Error parsing saved state:', e);
                 }
             }
             
-            // Default state
+            // Default state — DB load happens async in restoreState()
+            return this._defaultState();
+        }
+
+        /**
+         * Default empty state object.
+         */
+        _defaultState() {
             return {
                 clientId: this.config.clientId,
                 serviceAreaId: this.config.serviceAreaId || null,
@@ -347,8 +359,46 @@
                 solutions: [],
                 offers: [],
                 assets: {},
+                selectedProblems: [],
+                selectedSolutions: {},
+                problemSuggestions: [],
+                solutionSuggestions: {},
+                contentAssets: {},
                 lastSaved: null
             };
+        }
+
+        /**
+         * Load state from database via /journey-state/load.
+         * Returns null if no saved state exists in DB.
+         */
+        async loadStateFromDB() {
+            try {
+                const response = await fetch(
+                    `${this.config.restUrl}/journey-state/load?client_id=${this.config.clientId}`,
+                    {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-WP-Nonce': this.config.restNonce
+                        }
+                    }
+                );
+
+                if (!response.ok) return null;
+
+                const data = await response.json();
+                if (data.success && data.state_data && typeof data.state_data === 'object') {
+                    console.log('[JC Workflow] State loaded from DB (state_id=' + data.state_id + ', step=' + data.current_step + ')');
+                    // Merge DB state with defaults to ensure all keys exist
+                    const dbState = Object.assign(this._defaultState(), data.state_data);
+                    dbState.currentStep = data.current_step || dbState.currentStep;
+                    return dbState;
+                }
+            } catch (e) {
+                console.warn('[JC Workflow] DB state load failed (non-fatal):', e);
+            }
+            return null;
         }
 
         /**
@@ -368,21 +418,27 @@
         }
 
         /**
-         * Restore state from localStorage
+         * Restore state from localStorage or DB, then hydrate modules.
          */
-        restoreState() {
+        async restoreState() {
             // ── Always start at Step 1 when launched from Campaign Builder ──
-            // CB's client-manager.js sets 'dr_journey_client' in sessionStorage
-            // right before navigating here. If that flag is present, this is a
-            // fresh launch — force Step 1 regardless of saved state.
             const freshLaunch = sessionStorage.getItem('dr_journey_client');
             if (freshLaunch) {
-                // Consume the flag so a page refresh stays on the current step
                 sessionStorage.removeItem('dr_journey_client');
+
+                // Even on fresh launch, try loading state from DB if localStorage is empty
+                if (!this.state.serviceAreaId && !this.state.journeyCircleId) {
+                    const dbState = await this.loadStateFromDB();
+                    if (dbState) {
+                        this.state = dbState;
+                        // Persist to localStorage for faster loads
+                        this.saveState();
+                    }
+                }
+
                 this.state.currentStep = 1;
                 this.currentStep = 1;
                 console.log('[JC Workflow] Fresh launch from Campaign Builder — starting at Step 1');
-                // Still trigger restore so modules can hydrate from persisted data
                 $(document).trigger('jc:restoreState', [this.state]);
                 const restoredStep = this.currentStep;
                 setTimeout(() => {
@@ -391,18 +447,33 @@
                 return;
             }
 
+            // ── Normal page load: check if we need DB fallback ──
+            const hasLocalData = this.state.serviceAreaId || this.state.journeyCircleId ||
+                                 (this.state.brainContent && this.state.brainContent.length > 0) ||
+                                 (this.state.selectedProblems && this.state.selectedProblems.length > 0);
+
+            if (!hasLocalData) {
+                // localStorage is empty/default — try DB
+                const dbState = await this.loadStateFromDB();
+                if (dbState) {
+                    this.state = dbState;
+                    this.currentStep = dbState.currentStep || 1;
+                    // Persist to localStorage for faster subsequent loads
+                    this.saveState();
+                    console.log('[JC Workflow] Restored state from DB — step', this.currentStep);
+                }
+            }
+
             if (this.state.currentStep && this.state.currentStep !== this.currentStep) {
                 this.currentStep = this.state.currentStep;
+                $('.jc-step').hide();
                 $(`#jc-step-${this.currentStep}`).show();
-                $('#jc-step-1').hide();
             }
             
             // Trigger restore events for each module
             $(document).trigger('jc:restoreState', [this.state]);
             
-            // Also trigger stepChanged so modules that listen for it
-            // (e.g. ProblemSolutionManager) initialize their UI on page load.
-            // Use setTimeout to allow all modules to register their listeners first.
+            // Also trigger stepChanged so modules initialize their UI
             const restoredStep = this.currentStep;
             setTimeout(() => {
                 $(document).trigger('jc:stepChanged', [restoredStep]);
@@ -410,34 +481,86 @@
         }
 
         /**
-         * Sync state with API
+         * Sync full state to database via /journey-state/save.
+         *
+         * This is the primary DB persistence path — saves the ENTIRE workflow
+         * state snapshot so it survives localStorage clearing, browser changes,
+         * and device switches.
          */
         async syncStateToAPI() {
-            if (!this.state.journeyCircleId) {
-                return; // Can't sync without journey circle ID
+            if (!this.state.clientId) {
+                return; // Can't sync without client ID
             }
 
             try {
-                const response = await fetch(`${this.config.restUrl}/journey-circles/${this.state.journeyCircleId}`, {
-                    method: 'PUT',
+                const response = await fetch(`${this.config.restUrl}/journey-state/save`, {
+                    method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-WP-Nonce': this.config.restNonce
                     },
                     body: JSON.stringify({
-                        brain_content: this.state.brainContent,
-                        industries: this.state.industries,
-                        primary_problem_id: this.state.primaryProblemId
+                        client_id:         this.state.clientId,
+                        service_area_id:   this.state.serviceAreaId || 0,
+                        journey_circle_id: this.state.journeyCircleId || 0,
+                        current_step:      this.currentStep,
+                        state_data:        this.state
                     })
                 });
 
                 if (!response.ok) {
-                    throw new Error('API sync failed');
+                    throw new Error('State save API returned ' + response.status);
                 }
 
-                console.log('State synced to API');
+                const data = await response.json();
+                if (data.success) {
+                    console.log('[JC Workflow] State synced to DB (state_id=' + data.state_id + ')');
+                }
             } catch (error) {
-                console.error('Error syncing state to API:', error);
+                console.error('[JC Workflow] Error syncing state to DB:', error);
+            }
+
+            // Also sync structured entities if journey circle exists
+            if (this.state.journeyCircleId) {
+                this._syncEntities();
+            }
+        }
+
+        /**
+         * Sync structured entities (offers, assets, URLs) to relational tables.
+         * Runs alongside the state snapshot save.
+         */
+        async _syncEntities() {
+            const jcId = this.state.journeyCircleId;
+            if (!jcId) return;
+
+            // Only sync if there's data to sync
+            const offers = this.state.offers || {};
+            const contentAssets = this.state.contentAssets || {};
+            const publishedUrls = this.state.publishedUrls || {};
+
+            const hasOffers = Object.keys(offers).length > 0;
+            const hasAssets = Object.keys(contentAssets).length > 0;
+            const hasUrls   = Object.keys(publishedUrls).length > 0;
+
+            if (!hasOffers && !hasAssets && !hasUrls) return;
+
+            try {
+                await fetch(`${this.config.restUrl}/journey-state/sync`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-WP-Nonce': this.config.restNonce
+                    },
+                    body: JSON.stringify({
+                        journey_circle_id: jcId,
+                        offers:            hasOffers ? offers : null,
+                        content_assets:    hasAssets ? contentAssets : null,
+                        published_urls:    hasUrls ? publishedUrls : null
+                    })
+                });
+            } catch (e) {
+                console.warn('[JC Workflow] Entity sync error (non-fatal):', e);
             }
         }
 
@@ -518,6 +641,37 @@
         }
 
         /**
+         * Clear journey-specific data when switching to a different service area.
+         *
+         * Preserves: clientId, brainContent, existingAssets (steps 1-3)
+         * Clears: everything from step 4 onward (industries, problems,
+         *         solutions, offers, assets, AI suggestions, etc.)
+         *
+         * Called by service-area-manager when user selects/creates a new SA.
+         */
+        clearServiceAreaData() {
+            this.state.industries = [];
+            this.state.primaryProblemId = null;
+            this.state.problems = [];
+            this.state.solutions = [];
+            this.state.offers = [];
+            this.state.assets = {};
+            this.state.selectedProblems = [];
+            this.state.selectedSolutions = {};
+            this.state.problemSuggestions = [];
+            this.state.solutionSuggestions = {};
+            this.state.contentAssets = {};
+            this.state.publishedUrls = {};
+            this.state.colorScheme = null;
+            this.saveState();
+
+            // Notify modules to clear their internal caches
+            $(document).trigger('jc:serviceAreaChanged');
+
+            console.log('[JC Workflow] Service area data cleared');
+        }
+
+        /**
          * Update state property
          */
         updateState(key, value) {
@@ -544,26 +698,11 @@
         resetState() {
             const clientId = this.config.clientId;
 
-            this.state = {
-                clientId: clientId,
-                serviceAreaId: null,
-                journeyCircleId: null,
-                currentStep: 1,
-                brainContent: [],
-                existingAssets: [],
-                industries: [],
-                primaryProblemId: null,
-                problems: [],
-                solutions: [],
-                offers: [],
-                assets: {},
-                selectedProblems: [],
-                selectedSolutions: {},
-                lastSaved: null
-            };
+            this.state = Object.assign(this._defaultState(), { clientId: clientId });
 
             this.currentStep = 1;
             this.saveState();
+            this.syncStateToAPI(); // Clear DB state too
             this.updateUI();
 
             // Show Step 1, hide whatever was visible
