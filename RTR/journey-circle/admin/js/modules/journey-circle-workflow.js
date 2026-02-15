@@ -67,15 +67,17 @@
         /**
          * Navigate to specific step
          */
-        goToStep(stepNumber) {
+        goToStep(stepNumber, skipValidation = false) {
             if (stepNumber < 1 || stepNumber > this.totalSteps) {
                 return;
             }
 
-            // Validate current step before proceeding
-            if (stepNumber > this.currentStep && !this.validateCurrentStep()) {
+            // Validate current step before proceeding (skip if already validated by caller)
+            if (!skipValidation && stepNumber > this.currentStep && !this.validateCurrentStep()) {
                 return;
             }
+
+            // Hide current step
 
             // Hide current step
             $(`#jc-step-${this.currentStep}`).fadeOut(200, () => {
@@ -104,7 +106,7 @@
          */
         goToNextStep() {
             if (this.currentStep < this.totalSteps && this.validateCurrentStep()) {
-                this.goToStep(this.currentStep + 1);
+                this.goToStep(this.currentStep + 1, true);
             }
         }
 
@@ -123,6 +125,12 @@
         validateCurrentStep() {
             let isValid = true;
             let errorMessage = '';
+            
+            console.log('[JC Workflow] Validating step', this.currentStep, 'state:', {
+                selectedProblems: this.state.selectedProblems,
+                primaryProblemId: this.state.primaryProblemId,
+                selectedSolutions: this.state.selectedSolutions
+            });
 
             switch (this.currentStep) {
                 case 1: // Brain Content
@@ -140,35 +148,112 @@
                     break;
 
                 case 3: // Existing Assets (optional)
-                    // This step is optional, always valid
                     isValid = true;
                     break;
 
-                // Add validation for other steps as they're implemented
+                case 4: // Industries
+                    if (!this.state.industries || this.state.industries.length === 0) {
+                        isValid = false;
+                        errorMessage = 'Please select at least one industry before proceeding.';
+                    }
+                    break;
+
+                case 5: // Primary Problem
+                    if (!this.state.primaryProblemId) {
+                        isValid = false;
+                        errorMessage = 'Please designate a primary problem before proceeding.';
+                    }
+                    break;
+
+                case 6: // Problem Titles
+                    if (!this.state.selectedProblems || this.state.selectedProblems.length !== 5) {
+                        isValid = false;
+                        errorMessage = 'Please select exactly 5 problem titles before proceeding.';
+                    }
+                    break;
+
+                case 7: // Solution Titles
+                    if (!this.state.selectedSolutions || Object.keys(this.state.selectedSolutions).length < 5) {
+                        isValid = false;
+                        errorMessage = 'Please select a solution for each problem before proceeding.';
+                    }
+                    break;
+
+                case 8: // Offer Mapping
+                    // At least one offer total is required
+                    {
+                        const offers = this.state.offers || {};
+                        const totalOffers = Object.values(offers).reduce((sum, arr) => {
+                            return sum + (Array.isArray(arr) ? arr.length : 0);
+                        }, 0);
+                        if (totalOffers === 0) {
+                            isValid = false;
+                            errorMessage = 'Please add at least one offer before proceeding.';
+                        }
+                    }
+                    break;
+
+                case 9: // Asset Creation (optional - can proceed without creating all)
+                    isValid = true;
+                    break;
+
+                case 10: // Link Published Assets (optional)
+                    isValid = true;
+                    break;
+
+                case 11: // Complete
+                    isValid = true;
+                    break;
             }
 
             if (!isValid) {
+                console.warn('[JC Workflow] Validation FAILED for step', this.currentStep, ':', errorMessage);
                 this.showNotification(errorMessage, 'error');
+            } else {
+                console.log('[JC Workflow] Validation PASSED for step', this.currentStep);
             }
 
             return isValid;
         }
 
+
         /**
          * Get maximum accessible step based on completed steps
          */
         getMaxAccessibleStep() {
-            // Allow navigation back to any previous step
-            // But only forward if current step is valid
             let maxStep = 1;
             
             if (this.state.brainContent && this.state.brainContent.length > 0) {
                 maxStep = 2;
             }
             if (this.state.serviceAreaId) {
-                maxStep = 3;
+                maxStep = 3; // Step 3 is optional, so also unlock 4
             }
-            // Add more conditions as steps are implemented
+            if (maxStep >= 3) {
+                maxStep = 4; // Industries
+            }
+            if (this.state.industries && this.state.industries.length > 0) {
+                maxStep = 5;
+            }
+            if (this.state.primaryProblemId) {
+                maxStep = 6;
+            }
+            if (this.state.selectedProblems && this.state.selectedProblems.length === 5) {
+                maxStep = 7;
+            }
+            if (this.state.selectedSolutions && Object.keys(this.state.selectedSolutions).length >= 5) {
+                maxStep = 8;
+            }
+            // Steps 8+ are progressively unlockable
+            if (maxStep >= 8) {
+                const offers = this.state.offers || {};
+                const totalOffers = Object.values(offers).reduce((sum, arr) => {
+                    return sum + (Array.isArray(arr) ? arr.length : 0);
+                }, 0);
+                if (totalOffers > 0) {
+                    maxStep = 11; // Once offers exist, allow free navigation to all remaining steps
+                }
+            }
             
             return Math.max(maxStep, this.currentStep);
         }
@@ -252,6 +337,7 @@
             return {
                 clientId: this.config.clientId,
                 serviceAreaId: this.config.serviceAreaId || null,
+                journeyCircleId: null,
                 currentStep: 1,
                 brainContent: [],
                 existingAssets: [],
@@ -285,6 +371,26 @@
          * Restore state from localStorage
          */
         restoreState() {
+            // ── Always start at Step 1 when launched from Campaign Builder ──
+            // CB's client-manager.js sets 'dr_journey_client' in sessionStorage
+            // right before navigating here. If that flag is present, this is a
+            // fresh launch — force Step 1 regardless of saved state.
+            const freshLaunch = sessionStorage.getItem('dr_journey_client');
+            if (freshLaunch) {
+                // Consume the flag so a page refresh stays on the current step
+                sessionStorage.removeItem('dr_journey_client');
+                this.state.currentStep = 1;
+                this.currentStep = 1;
+                console.log('[JC Workflow] Fresh launch from Campaign Builder — starting at Step 1');
+                // Still trigger restore so modules can hydrate from persisted data
+                $(document).trigger('jc:restoreState', [this.state]);
+                const restoredStep = this.currentStep;
+                setTimeout(() => {
+                    $(document).trigger('jc:stepChanged', [restoredStep]);
+                }, 100);
+                return;
+            }
+
             if (this.state.currentStep && this.state.currentStep !== this.currentStep) {
                 this.currentStep = this.state.currentStep;
                 $(`#jc-step-${this.currentStep}`).show();
@@ -293,18 +399,26 @@
             
             // Trigger restore events for each module
             $(document).trigger('jc:restoreState', [this.state]);
+            
+            // Also trigger stepChanged so modules that listen for it
+            // (e.g. ProblemSolutionManager) initialize their UI on page load.
+            // Use setTimeout to allow all modules to register their listeners first.
+            const restoredStep = this.currentStep;
+            setTimeout(() => {
+                $(document).trigger('jc:stepChanged', [restoredStep]);
+            }, 100);
         }
 
         /**
          * Sync state with API
          */
         async syncStateToAPI() {
-            if (!this.state.serviceAreaId) {
-                return; // Can't sync without service area
+            if (!this.state.journeyCircleId) {
+                return; // Can't sync without journey circle ID
             }
 
             try {
-                const response = await fetch(`${this.config.restUrl}/journey-circles/${this.state.serviceAreaId}`, {
+                const response = await fetch(`${this.config.restUrl}/journey-circles/${this.state.journeyCircleId}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -377,9 +491,16 @@
          * Check if journey is complete
          */
         isJourneyComplete() {
-            return this.state.problems.length === 5 &&
-                   this.state.solutions.length === 5 &&
-                   this.state.offers.length > 0;
+            const problems = this.state.selectedProblems || [];
+            const solutions = this.state.selectedSolutions || {};
+            const offers = this.state.offers || {};
+            const totalOffers = Object.values(offers).reduce((sum, arr) => {
+                return sum + (Array.isArray(arr) ? arr.length : 0);
+            }, 0);
+
+            return problems.length === 5 &&
+                   Object.keys(solutions).length >= 5 &&
+                   totalOffers > 0;
         }
 
         /**
@@ -414,7 +535,12 @@
          * Update state property
          */
         updateState(key, value) {
-            this.state[key] = value;
+            // Support both updateState('key', value) and updateState({key: value, ...})
+            if (typeof key === 'object' && key !== null && value === undefined) {
+                Object.assign(this.state, key);
+            } else {
+                this.state[key] = value;
+            }
             this.saveState();
         }
 
@@ -422,6 +548,9 @@
          * Get state property
          */
         getState(key) {
+            if (key === undefined) {
+                return this.state;
+            }
             return this.state[key];
         }
     }

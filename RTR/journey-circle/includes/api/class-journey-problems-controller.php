@@ -78,6 +78,13 @@ class DR_Journey_Problems_Controller {
                     'required' => true,
                     'type'     => 'array'
                 ],
+                'replace_existing' => [
+                    'required' => false,
+                    'type'     => 'boolean',
+                    'default'  => true
+                ]
+            ]
+        ]);
 
         // Problem recommendations endpoint
         register_rest_route(self::NAMESPACE, '/journey-circles/(?P<circle_id>\d+)/recommendations/problems', [
@@ -96,13 +103,6 @@ class DR_Journey_Problems_Controller {
                 'brain_content' => [
                     'required' => false,
                     'type'     => 'array'
-                ]
-            ]
-        ]);
-                'replace_existing' => [
-                    'required' => false,
-                    'type'     => 'boolean',
-                    'default'  => true
                 ]
             ]
         ]);
@@ -658,4 +658,3 @@ class DR_Journey_Problems_Controller {
         ]);
     }
 }
-

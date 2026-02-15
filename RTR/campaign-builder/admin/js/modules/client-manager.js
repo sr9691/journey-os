@@ -259,7 +259,6 @@ export default class ClientManager extends EventEmitter {
                                 aria-label="Configure client settings">
                             <i class="fas fa-cog"></i>
                         </button>
-                        // Journey Circle Creator button
                         <button type="button" 
                                 class="badge badge-info journey-circle-btn" 
                                 title="Journey Circle Creator" 
@@ -373,7 +372,7 @@ export default class ClientManager extends EventEmitter {
         this.emit('client:journey_circle', { clientId, client });
 
         // Navigate to Journey Circle Creator page
-        window.location.href = `admin.php?page=dr-journey-circle&client_id=${clientId}`;
+        window.location.href = `admin.php?page=journey-circle-creator&client_id=${clientId}`;
     }
 
     

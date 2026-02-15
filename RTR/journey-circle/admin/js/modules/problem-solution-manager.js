@@ -45,6 +45,9 @@ class ProblemSolutionManager {
         this.isLoadingProblems = false;
         this.isLoadingRecommendations = false;
 
+        // Init guards to prevent double-initialization
+        this._step5Initializing = false;
+
         // Bind event handlers
         this.handleIndustryChange = this.handleIndustryChange.bind(this);
         this.handlePrimaryProblemSelect = this.handlePrimaryProblemSelect.bind(this);
@@ -354,8 +357,12 @@ class ProblemSolutionManager {
      * Initialize Step 4: Industry Selection
      */
     async initStep4() {
-        const container = document.getElementById('step-4-content');
-        if (!container) return;
+        // Try both possible container IDs
+        const container = document.getElementById('step-4-content') || document.getElementById('jc-industry-list');
+        if (!container) {
+            console.error('Step 4 container not found');
+            return;
+        }
 
         // Show loading state
         container.innerHTML = this.renderLoadingState('Loading industries...');
@@ -781,24 +788,195 @@ class ProblemSolutionManager {
      * Initialize Step 5: Primary Problem Selection
      */
     async initStep5() {
-        const container = document.getElementById('step-5-content');
-        if (!container) return;
+        // Prevent double initialization
+        if (this._step5Initializing) return;
+        this._step5Initializing = true;
 
-        // Show loading state
-        container.innerHTML = this.renderLoadingState('Loading problems from database...');
+        // Use template's existing container
+        const listContainer = document.getElementById('jc-primary-problem-list');
+        const loadingEl = document.getElementById('jc-primary-problem-loading');
+        const regenBtn = document.getElementById('jc-regenerate-primary-problems');
+        
+        if (!listContainer) {
+            console.error('Step 5: jc-primary-problem-list container not found');
+            this._step5Initializing = false;
+            return;
+        }
 
         // Load saved state
         const state = this.workflow.getState();
         this.primaryProblemId = state.primaryProblemId || null;
 
-        // Fetch problems from database
-        await this.fetchProblemRecommendations();
+        // Wire up regenerate button
+        if (regenBtn && !regenBtn._bound) {
+            regenBtn._bound = true;
+            regenBtn.addEventListener('click', () => this.generateAndRenderProblems(listContainer, loadingEl, regenBtn));
+        }
 
-        // Render the primary problem selector
-        this.renderPrimaryProblemSelector(container);
+        // Auto-generate on first visit if no problems exist
+        if (this.problemRecommendations.length === 0) {
+            await this.generateAndRenderProblems(listContainer, loadingEl, regenBtn);
+        } else {
+            this.renderProblemRadioList(listContainer);
+        }
 
-        // Attach event listeners
+        // Attach selection listeners
         this.attachPrimaryProblemListeners();
+        
+        this._step5Initializing = false;
+    }
+
+    /**
+     * Generate problem titles via AI and render them
+     */
+    async generateAndRenderProblems(listContainer, loadingEl, regenBtn) {
+        // Show loading
+        if (loadingEl) loadingEl.style.display = 'block';
+        if (regenBtn) regenBtn.disabled = true;
+        listContainer.innerHTML = '';
+
+        const state = this.workflow.getState();
+
+        try {
+            // Try AI title manager if available
+            if (window.AITitleManager) {
+                const aiManager = new window.AITitleManager({
+                    apiBase: this.options.apiBase,
+                    nonce: this.options.nonce,
+                    circleId: state.journeyCircleId,
+                    clientId: state.clientId
+                });
+
+                const result = await aiManager.generateProblemTitles({
+                    serviceAreaId: state.serviceAreaId,
+                    serviceAreaName: '',
+                    industries: state.industries || [],
+                    brainContent: state.brainContent || [],
+                    forceRefresh: true
+                });
+
+                if (result.success && result.titles.length > 0) {
+                    this.problemRecommendations = result.titles.map((title, i) => ({
+                        id: `ai_${i}`,
+                        title: typeof title === 'string' ? title : title.title || title.text || String(title),
+                        category: typeof title === 'object' ? (title.category || '') : ''
+                    }));
+                } else {
+                    throw new Error(result.error || 'No titles generated');
+                }
+            } else {
+                // Fallback: try the API directly
+                const response = await fetch(`${this.options.apiBase}/ai/generate-problem-titles`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-WP-Nonce': this.options.nonce
+                    },
+                    body: JSON.stringify({
+                        service_area_id: state.serviceAreaId,
+                        industries: state.industries || [],
+                        brain_content: state.brainContent || [],
+                        force_refresh: true
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const titles = data.titles || data.recommendations || [];
+                    this.problemRecommendations = titles.map((title, i) => ({
+                        id: `ai_${i}`,
+                        title: typeof title === 'string' ? title : title.title || title.text || String(title),
+                        category: typeof title === 'object' ? (title.category || '') : ''
+                    }));
+                } else {
+                    throw new Error(`API returned ${response.status}`);
+                }
+            }
+        } catch (error) {
+            console.error('Problem title generation error:', error);
+            // Show manual entry fallback
+            listContainer.innerHTML = `
+                <div class="jc-ai-error" style="padding: 15px; margin-bottom: 15px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+                    <p><i class="fas fa-exclamation-triangle"></i> <strong>AI generation unavailable:</strong> ${this.escapeHtml(error.message)}</p>
+                    <p>You can manually enter problem titles below.</p>
+                </div>
+                <div class="jc-manual-problem-entry" style="display: flex; gap: 10px; margin-top: 10px;">
+                    <input type="text" id="jc-manual-problem-input" class="jc-input" 
+                           placeholder="Enter a problem statement..." style="flex: 1;">
+                    <button type="button" class="button button-primary" id="jc-add-manual-problem">
+                        <i class="fas fa-plus"></i> Add Problem
+                    </button>
+                </div>
+            `;
+            this.attachManualProblemListener(listContainer);
+        } finally {
+            if (loadingEl) loadingEl.style.display = 'none';
+            if (regenBtn) regenBtn.disabled = false;
+        }
+
+        // Render the radio list
+        if (this.problemRecommendations.length > 0) {
+            this.renderProblemRadioList(listContainer);
+        }
+    }
+
+    /**
+     * Render problem recommendations as radio buttons
+     */
+    renderProblemRadioList(container) {
+        container.innerHTML = this.problemRecommendations.map((problem, index) => `
+            <div class="jc-problem-card ${this.primaryProblemId == problem.id ? 'jc-selected' : ''}" 
+                 data-problem-id="${problem.id}" style="padding: 12px; margin-bottom: 8px; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
+                <label class="jc-radio-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="radio" 
+                           name="primaryProblem" 
+                           value="${problem.id}"
+                           class="jc-primary-problem-radio"
+                           ${this.primaryProblemId == problem.id ? 'checked' : ''}>
+                    <div class="jc-problem-content" style="display: flex; align-items: center; gap: 10px;">
+                        <span class="jc-problem-number" style="background: #4a90d9; color: white; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-weight: bold;">${index + 1}</span>
+                        <span class="jc-problem-title">${this.escapeHtml(problem.title)}</span>
+                    </div>
+                </label>
+            </div>
+        `).join('');
+
+        // Re-attach listeners
+        this.attachPrimaryProblemListeners();
+    }
+
+    /**
+     * Attach manual problem entry listener
+     */
+    attachManualProblemListener(container) {
+        const addBtn = container.querySelector('#jc-add-manual-problem');
+        const input = container.querySelector('#jc-manual-problem-input');
+        if (!addBtn || !input) return;
+
+        addBtn.addEventListener('click', () => {
+            const title = input.value.trim();
+            if (!title) return;
+
+            this.problemRecommendations.push({
+                id: `manual_${Date.now()}`,
+                title: title,
+                category: ''
+            });
+
+            input.value = '';
+            this.renderProblemRadioList(container);
+            // Re-add the manual form after the list
+            container.insertAdjacentHTML('beforeend', `
+                <div class="jc-manual-problem-entry" style="display: flex; gap: 10px; margin-top: 10px;">
+                    <input type="text" id="jc-manual-problem-input" class="jc-input" 
+                           placeholder="Enter another problem statement..." style="flex: 1;">
+                    <button type="button" class="button button-primary" id="jc-add-manual-problem">
+                        <i class="fas fa-plus"></i> Add Problem
+                    </button>
+                </div>
+            `);
+            this.attachManualProblemListener(container);
+        });
     }
 
     /**
@@ -1747,3 +1925,37 @@ class ProblemSolutionManager {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = ProblemSolutionManager;
 }
+
+// Auto-initialize when workflow is ready
+(function($) {
+    'use strict';
+
+    $(document).ready(function() {
+        if (window.drJourneyCircle) {
+            const workflow = window.drJourneyCircle;
+            const psManager = new ProblemSolutionManager(workflow, {
+                apiBase: workflow.config.restUrl,
+                nonce: workflow.config.restNonce
+            });
+
+            // Store reference globally
+            window.drProblemSolutionManager = psManager;
+
+            // Listen for step changes to initialize step UI
+            // Note: Steps 5, 6, 7 are handled by steps567-manager.js
+            $(document).on('jc:stepChanged', function(e, step) {
+                if (step === 4) {
+                    psManager.initStep4();
+                }
+            });
+
+            // If already on step 4, init immediately
+            const currentStep = workflow.getState ? workflow.getState().currentStep : (workflow.state ? workflow.state.currentStep : null);
+            if (currentStep === 4) {
+                psManager.initStep4();
+            }
+
+            console.log('ProblemSolutionManager initialized');
+        }
+    });
+})(jQuery);

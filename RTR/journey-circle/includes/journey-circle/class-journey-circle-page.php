@@ -131,7 +131,7 @@ class DR_Journey_Circle_Page {
         check_ajax_referer('dr_journey_circle_nonce', 'nonce');
         
         // Check user capabilities
-        if (!current_user_can('manage_campaigns')) {
+        if (!current_user_can('upload_files')) {
             wp_send_json_error(array('message' => __('Permission denied', 'directreach-campaign-builder')));
         }
         
@@ -152,7 +152,13 @@ class DR_Journey_Circle_Page {
             'pdf'  => 'application/pdf',
             'doc'  => 'application/msword',
             'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'txt'  => 'text/plain'
+            'txt'  => 'text/plain',
+            'html' => 'text/html',
+            'htm'  => 'text/html',
+            'jpg'  => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png'  => 'image/png',
+            'gif'  => 'image/gif',
         );
         
         $file_type = wp_check_filetype($file['name'], $allowed_types);

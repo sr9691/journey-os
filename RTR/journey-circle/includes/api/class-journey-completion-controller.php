@@ -693,7 +693,7 @@ class DR_Journey_Completion_Controller extends WP_REST_Controller {
         }
 
         global $wpdb;
-        $table_name = $wpdb->prefix . 'dr_clients';
+        $table_name = $wpdb->prefix . 'cpd_clients';
         return $wpdb->get_row($wpdb->prepare(
             "SELECT * FROM {$table_name} WHERE id = %d",
             $service_area->client_id

@@ -437,13 +437,27 @@ PROMPT;
      * @param string $prompt The prompt text.
      * @return string|WP_Error Response text on success, WP_Error on failure.
      */
-    private function call_gemini_api( $prompt ) {
+    private function call_gemini_api( $prompt, $options = array() ) {
         if ( ! $this->is_configured() ) {
             $this->last_error = __( 'Gemini API key is not configured. Please set it in DirectReach AI Settings.', 'directreach' );
             return new WP_Error( 'api_not_configured', $this->last_error );
         }
 
         $url = self::API_BASE_URL . $this->model . ':generateContent?key=' . $this->api_key;
+
+        // Merge caller overrides into generation config.
+        $gen_config = array(
+            'temperature'     => 0.8,
+            'topP'            => 0.9,
+            'topK'            => 40,
+            'maxOutputTokens' => isset( $options['maxOutputTokens'] ) ? (int) $options['maxOutputTokens'] : 2048,
+        );
+
+        // Only set responseMimeType when we genuinely need structured JSON.
+        // For HTML or free-text content, omitting it avoids Gemini wrapping/escaping output.
+        if ( ! isset( $options['responseMimeType'] ) || $options['responseMimeType'] !== 'none' ) {
+            $gen_config['responseMimeType'] = isset( $options['responseMimeType'] ) ? $options['responseMimeType'] : 'application/json';
+        }
 
         $body = array(
             'contents' => array(
@@ -455,13 +469,7 @@ PROMPT;
                     ),
                 ),
             ),
-            'generationConfig' => array(
-                'temperature'     => 0.8,
-                'topP'            => 0.9,
-                'topK'            => 40,
-                'maxOutputTokens' => 2048,
-                'responseMimeType' => 'application/json',
-            ),
+            'generationConfig' => $gen_config,
             'safetySettings' => array(
                 array(
                     'category'  => 'HARM_CATEGORY_HARASSMENT',
@@ -487,7 +495,7 @@ PROMPT;
                 'Content-Type' => 'application/json',
             ),
             'body'    => wp_json_encode( $body ),
-            'timeout' => self::API_TIMEOUT,
+            'timeout' => isset( $options['timeout'] ) ? (int) $options['timeout'] : self::API_TIMEOUT,
         ) );
 
         // Handle connection errors.
@@ -967,14 +975,31 @@ PROMPT;
      * Load the Gemini API key from WordPress options.
      */
     private function load_api_key() {
-        $ai_settings = get_option( 'dr_ai_settings', array() );
-
-        if ( isset( $ai_settings['gemini_api_key'] ) && ! empty( $ai_settings['gemini_api_key'] ) ) {
-            $this->api_key = $ai_settings['gemini_api_key'];
-            return;
+        // Ensure the Campaign Builder's AI Settings Manager class is available.
+        if ( ! class_exists( 'CPD_AI_Settings_Manager' ) ) {
+            // Try using the Campaign Builder constant first.
+            if ( defined( 'DR_CB_PLUGIN_DIR' ) ) {
+                $cb_settings_file = DR_CB_PLUGIN_DIR . 'includes/class-ai-settings-manager.php';
+            } else {
+                // Fallback: traverse from this file's location.
+                $cb_settings_file = dirname( __FILE__, 4 ) . '/campaign-builder/includes/class-ai-settings-manager.php';
+            }
+            if ( file_exists( $cb_settings_file ) ) {
+                require_once $cb_settings_file;
+            }
         }
 
-        // Fallback: check for standalone option.
+        // Primary: Use the Campaign Builder's AI Settings Manager (handles encrypted keys).
+        if ( class_exists( 'CPD_AI_Settings_Manager' ) ) {
+            $settings_manager = new CPD_AI_Settings_Manager();
+            $key = $settings_manager->get_api_key();
+            if ( ! empty( $key ) ) {
+                $this->api_key = $key;
+                return;
+            }
+        }
+
+        // Fallback: check for standalone unencrypted option.
         $standalone_key = get_option( 'dr_gemini_api_key', '' );
         if ( ! empty( $standalone_key ) ) {
             $this->api_key = $standalone_key;
@@ -1010,4 +1035,400 @@ PROMPT;
 
         return $name ? $name : __( 'Unknown Service Area', 'directreach' );
     }
+
+    // =========================================================================
+    // OUTLINE & CONTENT GENERATION (Step 9)
+    // =========================================================================
+
+    /**
+     * Generate a content outline for a problem/solution pair.
+     *
+     * @param array $args {
+     *     @type string $problem_title   The problem title.
+     *     @type string $solution_title  The solution title.
+     *     @type string $format          Content format (article_long, article_short, infographic).
+     *     @type array  $brain_content   Brain content resources.
+     *     @type array  $industries      Target industries.
+     *     @type string $existing_outline Existing outline for revision.
+     *     @type string $feedback        User feedback for revision.
+     * }
+     * @return array|WP_Error Array with 'outline' key or WP_Error.
+     */
+    public function generate_outline( $args ) {
+        if ( ! $this->is_configured() ) {
+            return new \WP_Error( 'not_configured', 'Gemini API key is not configured.' );
+        }
+
+        $problem_title  = sanitize_text_field( $args['problem_title'] ?? '' );
+        $solution_title = sanitize_text_field( $args['solution_title'] ?? '' );
+        $format         = sanitize_text_field( $args['format'] ?? 'article_long' );
+        $brain_summary  = $this->summarize_brain_content( $args['brain_content'] ?? array() );
+        $industries_str = $this->format_industries( $args['industries'] ?? array() );
+        $existing       = $args['existing_outline'] ?? '';
+        $feedback       = sanitize_text_field( $args['feedback'] ?? '' );
+
+        $format_desc = array(
+            'article_long'   => 'a detailed long-form article (1500-2500 words)',
+            'article_short'  => 'a concise short article (500-800 words)',
+            'blog_post'      => 'an engaging blog post (500-800 words) with a conversational, accessible tone optimized for web reading',
+            'linkedin_post'  => 'a professional LinkedIn post (200-300 words) designed for engagement, with a strong hook, insight, and call-to-action',
+            'infographic'    => 'an infographic with data points, statistics, and visual sections',
+            'presentation'   => 'a slide deck presentation (10-15 slides) with slide titles, bullet points, speaker notes, and a clear narrative arc',
+        );
+
+        $format_label = $format_desc[ $format ] ?? 'a content piece';
+
+        if ( ! empty( $existing ) && ! empty( $feedback ) ) {
+            // Revision prompt
+            $prompt = "You previously generated this content outline:\n\n{$existing}\n\n";
+            $prompt .= "The user provided this feedback: \"{$feedback}\"\n\n";
+            $prompt .= "Please revise the outline based on the feedback. Keep the same format and structure but incorporate the requested changes.\n";
+            $prompt .= "Return ONLY the revised outline text, no explanations.";
+        } else {
+            $prompt  = "Create a detailed content outline for {$format_label}.\n\n";
+            $prompt .= "Topic/Problem: {$problem_title}\n";
+            $prompt .= "Solution Approach: {$solution_title}\n";
+            if ( ! empty( $industries_str ) ) {
+                $prompt .= "Target Industries: {$industries_str}\n";
+            }
+            if ( ! empty( $brain_summary ) ) {
+                $prompt .= "\nContext from client resources:\n{$brain_summary}\n";
+            }
+            $prompt .= "\nCreate a structured outline with:\n";
+            $prompt .= "- A compelling headline/title\n";
+            $prompt .= "- Section headings with brief descriptions of what each section will cover\n";
+            $prompt .= "- Key points to address in each section\n";
+            $prompt .= "- Suggested data points or examples to include\n";
+            $prompt .= "- A strong call-to-action section\n\n";
+            $prompt .= "Return ONLY the outline text, well-formatted with clear hierarchy.";
+        }
+
+        $result = $this->call_gemini_api( $prompt );
+
+        if ( is_wp_error( $result ) ) {
+            return $result;
+        }
+
+        return array( 'outline' => trim( $result ) );
+    }
+
+    /**
+     * Generate full content from an approved outline.
+     *
+     * ALL formats now return structured JSON. The client-side renderer
+     * parses JSON and builds format-specific previews and downloads.
+     *
+     * JSON Schemas by format:
+     *
+     * article_long / blog_post:
+     *   { "title": "...", "meta_description": "...", "sections": [
+     *       { "heading": "...", "paragraphs": ["...", "..."], "key_takeaway": "..." }
+     *   ], "call_to_action": "..." }
+     *
+     * linkedin_post:
+     *   { "hook": "...", "body": ["paragraph1", "paragraph2", ...],
+     *     "call_to_action": "...", "hashtags": ["#tag1", "#tag2"] }
+     *
+     * infographic:
+     *   { "title": "...", "subtitle": "...", "sections": [
+     *       { "heading": "...", "description": "...",
+     *         "data_points": [{"label":"...","value":"..."}],
+     *         "visual_element": { "type": "bar_chart|donut_chart|stat_cards|comparison|timeline|progress_bars", "data": {...} } }
+     *   ], "footer": "...", "call_to_action": "..." }
+     *
+     * presentation: (unchanged - already JSON)
+     *   [ { "slide_number":1, "slide_title":"...", "section":"...", "key_points":[], "speaker_notes":"...", "data_points":[], "visual_element": null|{...} } ]
+     *
+     * @param array $args Generation arguments.
+     * @return array|WP_Error Array with 'content' key (JSON string) or WP_Error.
+     */
+    public function generate_content( $args ) {
+        if ( ! $this->is_configured() ) {
+            return new \WP_Error( 'not_configured', 'Gemini API key is not configured.' );
+        }
+
+        $problem_title  = sanitize_text_field( $args['problem_title'] ?? '' );
+        $solution_title = sanitize_text_field( $args['solution_title'] ?? '' );
+        $format         = sanitize_text_field( $args['format'] ?? 'article_long' );
+        $outline        = $args['outline'] ?? '';
+        $brain_summary  = $this->summarize_brain_content( $args['brain_content'] ?? array() );
+        $industries_str = $this->format_industries( $args['industries'] ?? array() );
+        $existing       = $args['existing_content'] ?? '';
+        $feedback       = sanitize_text_field( $args['feedback'] ?? '' );
+        $focus          = sanitize_text_field( $args['focus'] ?? '' );
+        $focus_instr    = sanitize_text_field( $args['focus_instruction'] ?? '' );
+
+        // =====================================================================
+        // REVISION PATH (existing content + feedback)
+        // =====================================================================
+        if ( ! empty( $existing ) && ! empty( $feedback ) ) {
+            $prompt = $this->build_revision_prompt( $format, $existing, $feedback, $focus_instr );
+        }
+        // =====================================================================
+        // PRESENTATION — slide deck JSON array
+        // =====================================================================
+        elseif ( $format === 'presentation' ) {
+            $prompt = $this->build_presentation_prompt( $problem_title, $solution_title, $industries_str, $brain_summary, $focus_instr, $outline );
+        }
+        // =====================================================================
+        // LINKEDIN POST — structured post JSON
+        // =====================================================================
+        elseif ( $format === 'linkedin_post' ) {
+            $prompt = $this->build_linkedin_prompt( $problem_title, $solution_title, $industries_str, $brain_summary, $focus_instr, $outline );
+        }
+        // =====================================================================
+        // INFOGRAPHIC — structured sections with visual elements
+        // =====================================================================
+        elseif ( $format === 'infographic' ) {
+            $prompt = $this->build_infographic_prompt( $problem_title, $solution_title, $industries_str, $brain_summary, $focus_instr, $outline );
+        }
+        // =====================================================================
+        // ARTICLE / BLOG POST — structured sections JSON
+        // =====================================================================
+        else {
+            $prompt = $this->build_article_prompt( $format, $problem_title, $solution_title, $industries_str, $brain_summary, $focus_instr, $outline );
+        }
+
+        // All formats now use JSON response mode.
+        $max_tokens = ( $format === 'presentation' || $format === 'infographic' ) ? 8192 : 4096;
+        $api_options = array(
+            'maxOutputTokens'  => $max_tokens,
+            'responseMimeType' => 'application/json',
+            'timeout'          => ( $format === 'presentation' ) ? 60 : 45,
+        );
+
+        $result = $this->call_gemini_api( $prompt, $api_options );
+
+        if ( is_wp_error( $result ) ) {
+            return $result;
+        }
+
+        // Clean up any markdown code fences (```json, etc.)
+        $content = trim( $result );
+        $content = preg_replace( '/^```\w*\s*/i', '', $content );
+        $content = preg_replace( '/\s*```$/', '', $content );
+
+        return array( 'content' => $content );
+    }
+
+    // =========================================================================
+    // FORMAT-SPECIFIC PROMPT BUILDERS (all enforce JSON output)
+    // =========================================================================
+
+    /**
+     * Build revision prompt — used when user provides feedback on existing content.
+     */
+    private function build_revision_prompt( $format, $existing, $feedback, $focus_instr ) {
+        $prompt  = "You previously generated this content as JSON:\n\n{$existing}\n\n";
+        $prompt .= "The user provided this feedback: \"{$feedback}\"\n\n";
+        if ( ! empty( $focus_instr ) ) {
+            $prompt .= "Content angle: {$focus_instr}\n\n";
+        }
+        $prompt .= "Please revise the content based on the feedback. Return the SAME JSON structure with the requested changes applied.\n";
+        $prompt .= "CRITICAL: Return ONLY valid JSON. No markdown fences, no explanatory text.\n";
+        return $prompt;
+    }
+
+    /**
+     * Build article/blog post prompt — returns structured JSON.
+     */
+    private function build_article_prompt( $format, $problem_title, $solution_title, $industries_str, $brain_summary, $focus_instr, $outline ) {
+        $word_counts = array(
+            'article_long'  => '1500-2500',
+            'article_short' => '500-800',
+            'blog_post'     => '500-800',
+        );
+        $word_range = $word_counts[ $format ] ?? '800-1200';
+        $format_name = ( $format === 'blog_post' ) ? 'blog post' : 'article';
+
+        $prompt  = "Write a complete {$word_range} word {$format_name} and return it as structured JSON.\n\n";
+        $prompt .= "Topic/Problem: {$problem_title}\nSolution: {$solution_title}\n";
+        if ( ! empty( $industries_str ) ) {
+            $prompt .= "Target audience industries: {$industries_str}\n";
+        }
+        if ( ! empty( $brain_summary ) ) {
+            $prompt .= "\nContext from client resources:\n{$brain_summary}\n";
+        }
+        if ( ! empty( $focus_instr ) ) {
+            $prompt .= "\nContent angle: {$focus_instr}\n";
+        }
+        if ( ! empty( $outline ) ) {
+            $prompt .= "\nFollow this approved outline:\n{$outline}\n";
+        }
+
+        $prompt .= "\nRequirements:\n";
+        $prompt .= "- Professional, authoritative tone\n";
+        $prompt .= "- Include specific, actionable advice\n";
+        $prompt .= "- Use data points and examples where relevant\n";
+        $prompt .= "- Strong introduction and conclusion\n";
+        $prompt .= "- Clear call-to-action at the end\n";
+
+        if ( $format === 'blog_post' ) {
+            $prompt .= "- Conversational, accessible tone optimized for web reading\n";
+            $prompt .= "- Short paragraphs and clear subheadings for scanability\n";
+        }
+
+        $prompt .= "\nReturn a JSON object with EXACTLY this structure:\n";
+        $prompt .= "{\n";
+        $prompt .= "  \"title\": \"The article headline\",\n";
+        $prompt .= "  \"meta_description\": \"150-character SEO meta description\",\n";
+        $prompt .= "  \"sections\": [\n";
+        $prompt .= "    {\n";
+        $prompt .= "      \"heading\": \"Section heading\",\n";
+        $prompt .= "      \"paragraphs\": [\"First paragraph text...\", \"Second paragraph text...\"],\n";
+        $prompt .= "      \"key_takeaway\": \"Optional one-line takeaway for this section\"\n";
+        $prompt .= "    }\n";
+        $prompt .= "  ],\n";
+        $prompt .= "  \"call_to_action\": \"Final call-to-action paragraph\"\n";
+        $prompt .= "}\n\n";
+        $prompt .= "Include 4-8 sections. Each section should have 2-4 paragraphs. Each paragraph should be 3-5 sentences.\n";
+        $prompt .= "CRITICAL: Return ONLY valid JSON. No markdown fences, no code blocks, no explanatory text.\n";
+
+        return $prompt;
+    }
+
+    /**
+     * Build LinkedIn post prompt — returns structured JSON.
+     */
+    private function build_linkedin_prompt( $problem_title, $solution_title, $industries_str, $brain_summary, $focus_instr, $outline ) {
+        $prompt  = "Write a professional LinkedIn post (200-300 words) and return it as structured JSON.\n\n";
+        $prompt .= "Topic/Problem: {$problem_title}\nSolution: {$solution_title}\n";
+        if ( ! empty( $industries_str ) ) {
+            $prompt .= "Target audience industries: {$industries_str}\n";
+        }
+        if ( ! empty( $brain_summary ) ) {
+            $prompt .= "\nContext from client resources:\n{$brain_summary}\n";
+        }
+        if ( ! empty( $focus_instr ) ) {
+            $prompt .= "\nContent angle: {$focus_instr}\n";
+        }
+        if ( ! empty( $outline ) ) {
+            $prompt .= "\nFollow this outline:\n{$outline}\n";
+        }
+
+        $prompt .= "\nRequirements:\n";
+        $prompt .= "- Start with an attention-grabbing hook line\n";
+        $prompt .= "- Use short paragraphs (1-2 sentences each)\n";
+        $prompt .= "- Include relevant emoji sparingly\n";
+        $prompt .= "- End with a question or call-to-action to drive engagement\n";
+        $prompt .= "- Add 3-5 relevant hashtags\n\n";
+
+        $prompt .= "Return a JSON object with EXACTLY this structure:\n";
+        $prompt .= "{\n";
+        $prompt .= "  \"hook\": \"The attention-grabbing opening line\",\n";
+        $prompt .= "  \"body\": [\"Short paragraph 1\", \"Short paragraph 2\", \"Short paragraph 3\"],\n";
+        $prompt .= "  \"call_to_action\": \"Closing question or CTA\",\n";
+        $prompt .= "  \"hashtags\": [\"#hashtag1\", \"#hashtag2\", \"#hashtag3\"]\n";
+        $prompt .= "}\n\n";
+        $prompt .= "The body array should have 4-8 short paragraphs. Each paragraph 1-2 sentences.\n";
+        $prompt .= "CRITICAL: Return ONLY valid JSON. No markdown fences, no code blocks, no explanatory text.\n";
+
+        return $prompt;
+    }
+
+    /**
+     * Build infographic prompt — returns structured sections with visual elements.
+     */
+    private function build_infographic_prompt( $problem_title, $solution_title, $industries_str, $brain_summary, $focus_instr, $outline ) {
+        $prompt  = "Create content for a professional infographic and return it as structured JSON.\n\n";
+        $prompt .= "Topic/Problem: {$problem_title}\nSolution: {$solution_title}\n";
+        if ( ! empty( $industries_str ) ) {
+            $prompt .= "Target audience industries: {$industries_str}\n";
+        }
+        if ( ! empty( $brain_summary ) ) {
+            $prompt .= "\nContext from client resources:\n{$brain_summary}\n";
+        }
+        if ( ! empty( $focus_instr ) ) {
+            $prompt .= "\nContent angle: {$focus_instr}\n";
+        }
+        if ( ! empty( $outline ) ) {
+            $prompt .= "\nFollow this outline:\n{$outline}\n";
+        }
+
+        $prompt .= "\nReturn a JSON object with EXACTLY this structure:\n";
+        $prompt .= "{\n";
+        $prompt .= "  \"title\": \"Infographic title\",\n";
+        $prompt .= "  \"subtitle\": \"Brief tagline or subtitle\",\n";
+        $prompt .= "  \"sections\": [\n";
+        $prompt .= "    {\n";
+        $prompt .= "      \"heading\": \"Section heading\",\n";
+        $prompt .= "      \"description\": \"Brief description (1-2 sentences)\",\n";
+        $prompt .= "      \"data_points\": [{\"label\": \"Metric name\", \"value\": \"67%\"}],\n";
+        $prompt .= "      \"visual_element\": {\n";
+        $prompt .= "        \"type\": \"stat_cards\",\n";
+        $prompt .= "        \"data\": { \"stats\": [{\"value\": \"67%\", \"label\": \"Reduction\"}] }\n";
+        $prompt .= "      }\n";
+        $prompt .= "    }\n";
+        $prompt .= "  ],\n";
+        $prompt .= "  \"footer\": \"Source attribution or footnote\",\n";
+        $prompt .= "  \"call_to_action\": \"Final CTA text\"\n";
+        $prompt .= "}\n\n";
+
+        $prompt .= "Include 4-6 sections. Each section MUST have a visual_element.\n";
+        $prompt .= "Supported visual_element types:\n";
+        $prompt .= "1. \"bar_chart\" — data: { \"labels\": [...], \"values\": [...], \"title\": \"...\", \"value_suffix\": \"%\" }\n";
+        $prompt .= "2. \"donut_chart\" — data: { \"segments\": [{\"label\":\"...\",\"value\":30},...], \"center_label\": \"...\", \"center_value\": \"...\" }\n";
+        $prompt .= "3. \"stat_cards\" — data: { \"stats\": [{\"value\":\"67%\",\"label\":\"Reduction\"},...] }\n";
+        $prompt .= "4. \"comparison\" — data: { \"before\": {\"title\":\"Before\",\"points\":[...]}, \"after\": {\"title\":\"After\",\"points\":[...]} }\n";
+        $prompt .= "5. \"timeline\" — data: { \"steps\": [{\"phase\":\"Phase 1\",\"title\":\"...\",\"description\":\"...\"},...] }\n";
+        $prompt .= "6. \"progress_bars\" — data: { \"bars\": [{\"label\":\"...\",\"value\":85},...], \"value_suffix\": \"%\" }\n\n";
+
+        $prompt .= "Use realistic, plausible numbers. Vary visual types across sections.\n";
+        $prompt .= "CRITICAL: Return ONLY valid JSON. No markdown fences, no code blocks, no explanatory text.\n";
+
+        return $prompt;
+    }
+
+    /**
+     * Build presentation prompt — returns slide deck JSON array.
+     * (Extracted from previous inline code, unchanged logic.)
+     */
+    private function build_presentation_prompt( $problem_title, $solution_title, $industries_str, $brain_summary, $focus_instr, $outline ) {
+        $prompt  = "Create a professional slide deck as a JSON array.\n\n";
+        $prompt .= "Topic/Problem: {$problem_title}\n";
+        $prompt .= "Solution: {$solution_title}\n";
+        if ( ! empty( $industries_str ) ) {
+            $prompt .= "Target Industries: {$industries_str}\n";
+        }
+        if ( ! empty( $brain_summary ) ) {
+            $prompt .= "\nContext from client resources:\n{$brain_summary}\n";
+        }
+        if ( ! empty( $focus_instr ) ) {
+            $prompt .= "\nContent angle: {$focus_instr}\n";
+        }
+        if ( ! empty( $outline ) ) {
+            $prompt .= "\nUse this approved outline as guidance:\n{$outline}\n";
+        }
+        $prompt .= "\nReturn a JSON array of 10-12 slide objects. Each object MUST have:\n";
+        $prompt .= "{\n";
+        $prompt .= "  \"slide_number\": 1,\n";
+        $prompt .= "  \"slide_title\": \"Compelling Title\",\n";
+        $prompt .= "  \"section\": \"Title Slide\",\n";
+        $prompt .= "  \"key_points\": [\"Point one\", \"Point two\", \"Point three\"],\n";
+        $prompt .= "  \"speaker_notes\": \"What the presenter should say.\",\n";
+        $prompt .= "  \"data_points\": [\"67% of companies...\", \"$2.3M average savings\"],\n";
+        $prompt .= "  \"visual_element\": null\n";
+        $prompt .= "}\n\n";
+
+        $prompt .= "VISUAL ELEMENTS: For 3-5 data-heavy slides (NOT the title slide or CTA), include a \"visual_element\" object instead of null.\n";
+        $prompt .= "When a slide has a visual_element, move text bullets to key_points and let the visual tell the data story.\n";
+        $prompt .= "Each visual_element MUST have a \"type\" plus a \"data\" object. Supported types:\n\n";
+
+        $prompt .= "1. \"bar_chart\" — data: { \"labels\": [\"Label1\",\"Label2\",...], \"values\": [40,65,...], \"title\": \"Chart Title\", \"value_suffix\": \"%\" }\n";
+        $prompt .= "2. \"donut_chart\" — data: { \"segments\": [{\"label\":\"Seg1\",\"value\":30},{\"label\":\"Seg2\",\"value\":70}], \"center_label\": \"Total\", \"center_value\": \"100%\" }\n";
+        $prompt .= "3. \"stat_cards\" — data: { \"stats\": [{\"value\":\"67%\",\"label\":\"Reduction\"},{\"value\":\"$2.3M\",\"label\":\"Savings\"},{\"value\":\"3x\",\"label\":\"Faster\"}] }\n";
+        $prompt .= "4. \"comparison\" — data: { \"before\": {\"title\":\"Before\",\"points\":[\"Manual processes\",\"Slow\"]}, \"after\": {\"title\":\"After\",\"points\":[\"Automated\",\"Fast\"]} }\n";
+        $prompt .= "5. \"timeline\" — data: { \"steps\": [{\"phase\":\"Phase 1\",\"title\":\"Discovery\",\"description\":\"Assess current state\"},{\"phase\":\"Phase 2\",\"title\":\"Implementation\",\"description\":\"Deploy solution\"}] }\n";
+        $prompt .= "6. \"progress_bars\" — data: { \"bars\": [{\"label\":\"Efficiency\",\"value\":85},{\"label\":\"Cost\",\"value\":60}], \"value_suffix\": \"%\" }\n\n";
+
+        $prompt .= "Use realistic, plausible numbers. Vary visual types across slides — don't repeat the same type.\n\n";
+
+        $prompt .= "Valid section values: \"Title Slide\", \"Problem Definition\", \"Problem Amplification\", \"Solution Overview\", \"Solution Details\", \"Benefits Summary\", \"Credibility\", \"Call to Action\"\n\n";
+        $prompt .= "Structure: Title slide -> 2-3 problem slides -> 3-4 solution slides -> benefits -> credibility -> CTA\n";
+        $prompt .= "Keep key_points to 3-5 items, max 12 words each. Speaker notes should be 2-3 helpful sentences.\n\n";
+        $prompt .= "CRITICAL: Return ONLY the raw JSON array. No markdown fences, no ```json blocks, no explanatory text. Start with [ and end with ].\n";
+
+        return $prompt;
+    }
+
 }

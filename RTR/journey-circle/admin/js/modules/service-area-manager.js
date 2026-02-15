@@ -206,7 +206,7 @@
                     },
                     body: JSON.stringify({
                         client_id: this.workflow.config.clientId,
-                        name: name,
+                        title: name,
                         description: description,
                         status: 'draft'
                     })
@@ -316,6 +316,12 @@
                 const journeyCircle = await response.json();
                 console.log('Journey circle created:', journeyCircle);
 
+                // Store the journey circle ID in workflow state
+                if (journeyCircle && journeyCircle.id) {
+                    this.workflow.updateState('journeyCircleId', journeyCircle.id);
+                    this.loadJourneyCircleData(journeyCircle);
+                }
+
             } catch (error) {
                 console.error('Error creating journey circle:', error);
                 this.workflow.showNotification('Error creating journey circle', 'error');
@@ -326,6 +332,9 @@
          * Load journey circle data into state
          */
         loadJourneyCircleData(journeyCircle) {
+            // Store journey circle ID
+            this.workflow.updateState('journeyCircleId', journeyCircle.id);
+            
             // Update workflow state with existing journey circle data
             if (journeyCircle.industries) {
                 this.workflow.updateState('industries', journeyCircle.industries);

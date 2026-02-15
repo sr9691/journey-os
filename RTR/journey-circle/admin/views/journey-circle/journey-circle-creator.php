@@ -26,7 +26,7 @@ if (!$client_id) {
 // Get client data
 global $wpdb;
 $client = $wpdb->get_row($wpdb->prepare(
-    "SELECT * FROM {$wpdb->prefix}dr_clients WHERE id = %d",
+    "SELECT * FROM {$wpdb->prefix}cpd_clients WHERE id = %d",
     $client_id
 ));
 
@@ -35,28 +35,73 @@ if (!$client) {
 }
 ?>
 
-<div class="wrap dr-journey-circle-creator">
+<div class="campaign-builder-wrap dr-journey-circle-creator">
     
-    <!-- Header -->
-    <header class="jc-header">
-        <div class="jc-header-content">
-            <div class="jc-header-left">
-                <h1>
-                    <i class="fas fa-circle-notch"></i>
-                    <?php esc_html_e('Journey Circle Creator', 'directreach-campaign-builder'); ?>
-                </h1>
-                <p class="jc-client-name">
-                    <?php printf(__('Client: %s', 'directreach-campaign-builder'), esc_html($client->name)); ?>
-                </p>
+    <!-- Header — Campaign Builder branded header -->
+    <?php
+    // Try to reuse Campaign Builder's shared admin-header partial
+    $cb_header_path = WP_PLUGIN_DIR . '/directreach-campaign-builder/admin/views/partials/admin-header.php';
+    if ( ! file_exists( $cb_header_path ) && defined( 'DR_CB_PLUGIN_DIR' ) ) {
+        $cb_header_path = DR_CB_PLUGIN_DIR . 'admin/views/partials/admin-header.php';
+    }
+
+    if ( file_exists( $cb_header_path ) ) {
+        $args = array(
+            'page_badge'    => 'Journey Circle',
+            'active_page'   => 'journey-circle-creator',
+            'show_back_btn' => true,
+        );
+        include $cb_header_path;
+    } else {
+        // Self-contained fallback matching CB header structure
+        $current_user  = wp_get_current_user();
+        $user_initials = strtoupper( substr( $current_user->display_name, 0, 2 ) );
+        $user_role     = ! empty( $current_user->roles ) ? ucfirst( $current_user->roles[0] ) : 'User';
+        // Logo: try CB assets first, then JC's own
+        $logo_url = plugins_url( 'assets/MEMO_Seal.png', WP_PLUGIN_DIR . '/directreach-campaign-builder/directreach-campaign-builder.php' );
+        ?>
+        <header class="admin-header">
+            <div class="header-content">
+                <div class="header-left">
+                    <img src="<?php echo esc_url( $logo_url ); ?>" alt="DirectReach" class="header-logo"
+                         onerror="this.style.display='none'">
+                    <span class="admin-badge"><?php esc_html_e( 'Journey Circle', 'journey-circle' ); ?></span>
+                </div>
+                <div class="header-right">
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=dr-campaign-builder' ) ); ?>" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left"></i> <?php esc_html_e( 'Back to Campaign Builder', 'journey-circle' ); ?>
+                    </a>
+                    <div class="admin-user-info">
+                        <div class="user-avatar"><?php echo esc_html( $user_initials ); ?></div>
+                        <div class="user-details">
+                            <div class="user-name"><?php echo esc_html( $current_user->display_name ); ?></div>
+                            <div class="user-role"><?php echo esc_html( $user_role ); ?></div>
+                        </div>
+                    </div>
+                    <button class="logout-btn" onclick="window.location.href='<?php echo esc_url( wp_logout_url() ); ?>'">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span><?php esc_html_e( 'Logout', 'journey-circle' ); ?></span>
+                    </button>
+                </div>
             </div>
-            <div class="jc-header-right">
-                <button type="button" class="button button-secondary jc-return-btn">
-                    <i class="fas fa-arrow-left"></i>
-                    <?php esc_html_e('Return to Campaign Builder', 'directreach-campaign-builder'); ?>
-                </button>
+        </header>
+        <?php
+    }
+    ?>
+
+    <!-- Client Context Bar -->
+    <div class="jc-client-bar">
+        <div class="jc-client-bar-content">
+            <span class="jc-client-bar-label">
+                <i class="fas fa-building"></i>
+                <?php printf( __( 'Client: %s', 'journey-circle' ), '<strong>' . esc_html( $client->client_name ) . '</strong>' ); ?>
+            </span>
+            <div class="save-indicator">
+                <i class="fas fa-check-circle"></i>
+                <span><?php esc_html_e( 'All changes saved', 'journey-circle' ); ?></span>
             </div>
         </div>
-    </header>
+    </div>
 
     <!-- Progress Indicator -->
     <div class="jc-progress-container">
@@ -98,7 +143,7 @@ if (!$client) {
             </div>
             <div class="jc-progress-step" data-step="9">
                 <div class="jc-step-circle">9</div>
-                <div class="jc-step-label"><?php esc_html_e('Create Assets', 'directreach-campaign-builder'); ?></div>
+                <div class="jc-step-label"><?php esc_html_e('Content Assets', 'directreach-campaign-builder'); ?></div>
             </div>
             <div class="jc-progress-step" data-step="10">
                 <div class="jc-step-circle">10</div>
@@ -138,7 +183,7 @@ if (!$client) {
                                 class="jc-input jc-input-url" 
                                 placeholder="https://example.com/your-content"
                             />
-                            <button type="button" class="button button-primary jc-add-url-btn">
+                            <button type="button" class="btn btn-primary jc-add-url-btn">
                                 <i class="fas fa-plus"></i>
                                 <?php esc_html_e('Add URL', 'directreach-campaign-builder'); ?>
                             </button>
@@ -151,7 +196,7 @@ if (!$client) {
                             <i class="fas fa-file-alt"></i>
                             <?php esc_html_e('Paste Text Content', 'directreach-campaign-builder'); ?>
                         </h3>
-                        <button type="button" class="button button-secondary jc-paste-text-btn">
+                        <button type="button" class="btn btn-secondary jc-paste-text-btn">
                             <i class="fas fa-clipboard"></i>
                             <?php esc_html_e('Paste Text', 'directreach-campaign-builder'); ?>
                         </button>
@@ -247,7 +292,7 @@ if (!$client) {
                                     placeholder="Describe what this service area covers..."
                                 ></textarea>
                             </div>
-                            <button type="submit" class="button button-primary jc-create-sa-btn">
+                            <button type="submit" class="btn btn-primary jc-create-sa-btn">
                                 <i class="fas fa-plus"></i>
                                 <?php esc_html_e('Create Service Area', 'directreach-campaign-builder'); ?>
                             </button>
@@ -365,7 +410,7 @@ if (!$client) {
                     </div>
                     
                     <div class="jc-regenerate-section">
-                        <button type="button" class="button button-secondary jc-regenerate-btn" id="jc-regenerate-primary-problems">
+                        <button type="button" class="btn btn-secondary jc-regenerate-btn" id="jc-regenerate-primary-problems">
                             <i class="fas fa-sync-alt"></i>
                             <?php esc_html_e('Regenerate Suggestions', 'directreach-campaign-builder'); ?>
                         </button>
@@ -396,7 +441,7 @@ if (!$client) {
                     </div>
                     
                     <div class="jc-regenerate-section">
-                        <button type="button" class="button button-secondary jc-regenerate-btn" id="jc-regenerate-problem-titles">
+                        <button type="button" class="btn btn-secondary jc-regenerate-btn" id="jc-regenerate-problem-titles">
                             <i class="fas fa-sync-alt"></i>
                             <?php esc_html_e('Regenerate Suggestions', 'directreach-campaign-builder'); ?>
                         </button>
@@ -422,7 +467,7 @@ if (!$client) {
                     </div>
                     
                     <div class="jc-regenerate-section">
-                        <button type="button" class="button button-secondary jc-regenerate-btn" id="jc-regenerate-solutions">
+                        <button type="button" class="btn btn-secondary jc-regenerate-btn" id="jc-regenerate-solutions">
                             <i class="fas fa-sync-alt"></i>
                             <?php esc_html_e('Regenerate All Solutions', 'directreach-campaign-builder'); ?>
                         </button>
@@ -492,11 +537,11 @@ if (!$client) {
                             <div class="jc-feedback-section">
                                 <textarea id="jc-outline-feedback" class="jc-textarea" rows="3" placeholder="<?php esc_attr_e('Provide feedback to improve the outline...', 'directreach-campaign-builder'); ?>"></textarea>
                                 <div class="jc-feedback-actions">
-                                    <button type="button" class="button button-secondary" id="jc-revise-outline">
+                                    <button type="button" class="btn btn-secondary" id="jc-revise-outline">
                                         <i class="fas fa-edit"></i>
                                         <?php esc_html_e('Revise Outline', 'directreach-campaign-builder'); ?>
                                     </button>
-                                    <button type="button" class="button button-primary" id="jc-approve-outline">
+                                    <button type="button" class="btn btn-primary" id="jc-approve-outline">
                                         <i class="fas fa-check"></i>
                                         <?php esc_html_e('Approve & Generate Content', 'directreach-campaign-builder'); ?>
                                     </button>
@@ -515,11 +560,11 @@ if (!$client) {
                             <div class="jc-feedback-section">
                                 <textarea id="jc-content-feedback" class="jc-textarea" rows="3" placeholder="<?php esc_attr_e('Provide feedback to improve the content...', 'directreach-campaign-builder'); ?>"></textarea>
                                 <div class="jc-feedback-actions">
-                                    <button type="button" class="button button-secondary" id="jc-revise-content">
+                                    <button type="button" class="btn btn-secondary" id="jc-revise-content">
                                         <i class="fas fa-edit"></i>
                                         <?php esc_html_e('Revise Content', 'directreach-campaign-builder'); ?>
                                     </button>
-                                    <button type="button" class="button button-primary" id="jc-approve-content">
+                                    <button type="button" class="btn btn-primary" id="jc-approve-content">
                                         <i class="fas fa-check"></i>
                                         <?php esc_html_e('Approve & Download', 'directreach-campaign-builder'); ?>
                                     </button>
@@ -584,11 +629,11 @@ if (!$client) {
                         </div>
                         
                         <div class="jc-completion-actions">
-                            <button type="button" class="button button-secondary" id="jc-create-more-assets">
+                            <button type="button" class="btn btn-secondary" id="jc-create-more-assets">
                                 <i class="fas fa-plus"></i>
                                 <?php esc_html_e('Create More Assets', 'directreach-campaign-builder'); ?>
                             </button>
-                            <button type="button" class="button button-primary" id="jc-complete-journey">
+                            <button type="button" class="btn btn-primary" id="jc-complete-journey">
                                 <i class="fas fa-check"></i>
                                 <?php esc_html_e('Complete & Return to Campaign Builder', 'directreach-campaign-builder'); ?>
                             </button>
@@ -626,7 +671,7 @@ if (!$client) {
     <!-- Navigation Footer -->
     <footer class="jc-footer">
         <div class="jc-footer-content">
-            <button type="button" class="button button-secondary jc-prev-btn" disabled>
+            <button type="button" class="btn btn-secondary jc-prev-btn" disabled>
                 <i class="fas fa-arrow-left"></i>
                 <?php esc_html_e('Previous', 'directreach-campaign-builder'); ?>
             </button>
@@ -634,7 +679,7 @@ if (!$client) {
                 <?php esc_html_e('Step', 'directreach-campaign-builder'); ?> 
                 <span class="jc-current-step">1</span> / 11
             </div>
-            <button type="button" class="button button-primary jc-next-btn">
+            <button type="button" class="btn btn-primary jc-next-btn">
                 <?php esc_html_e('Next', 'directreach-campaign-builder'); ?>
                 <i class="fas fa-arrow-right"></i>
             </button>
@@ -661,10 +706,10 @@ if (!$client) {
             ></textarea>
         </div>
         <div class="jc-modal-footer">
-            <button type="button" class="button button-secondary jc-modal-cancel">
+            <button type="button" class="btn btn-secondary jc-modal-cancel">
                 <?php esc_html_e('Cancel', 'directreach-campaign-builder'); ?>
             </button>
-            <button type="button" class="button button-primary jc-paste-submit-btn">
+            <button type="button" class="btn btn-primary jc-paste-submit-btn">
                 <i class="fas fa-check"></i>
                 <?php esc_html_e('Add Content', 'directreach-campaign-builder'); ?>
             </button>
@@ -677,7 +722,7 @@ if (!$client) {
     var drJourneyCircleConfig = {
         clientId: <?php echo absint($client_id); ?>,
         serviceAreaId: <?php echo absint($service_area_id); ?>,
-        clientName: <?php echo wp_json_encode($client->name); ?>,
+        clientName: <?php echo wp_json_encode($client->client_name); ?>,
         nonce: '<?php echo wp_create_nonce('dr_journey_circle_nonce'); ?>',
         ajaxUrl: '<?php echo admin_url('admin-ajax.php'); ?>',
         restUrl: '<?php echo rest_url('directreach/v2'); ?>',

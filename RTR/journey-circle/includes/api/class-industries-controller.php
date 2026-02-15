@@ -88,7 +88,7 @@ class DR_Industries_Controller {
         }
 
         // Check capability
-        if (!current_user_can('manage_campaigns')) {
+        if (!current_user_can('manage_campaigns') && !current_user_can('manage_options')) {
             return new WP_Error(
                 'rest_forbidden',
                 __('You do not have permission to access this resource.', 'directreach'),
@@ -275,6 +275,21 @@ class DR_Industries_Controller {
      * Based on RB2B-compatible industry structure
      */
     private function get_industry_taxonomy() {
+        // Use shared industry taxonomy from scoring system if available
+        if (function_exists('rtr_get_industry_taxonomy')) {
+            return rtr_get_industry_taxonomy();
+        }
+
+        // Fallback: try to include the config file
+        $config_path = WP_PLUGIN_DIR . '/directreach/RTR/scoring-system/includes/industry-config.php';
+        if (file_exists($config_path)) {
+            require_once $config_path;
+            if (function_exists('rtr_get_industry_taxonomy')) {
+                return rtr_get_industry_taxonomy();
+            }
+        }
+
+        // Final fallback: hardcoded taxonomy
         return [
             'Agriculture' => [
                 'Agriculture',

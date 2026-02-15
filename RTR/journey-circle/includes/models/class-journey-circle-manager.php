@@ -7,7 +7,7 @@
  * @package Journey_Circle
  */
 
-class Journey_Circle_Manager {
+class DR_Journey_Circle_Manager {
 
     /**
      * Maximum number of problems allowed per journey circle.

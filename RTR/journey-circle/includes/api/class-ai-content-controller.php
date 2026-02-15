@@ -92,6 +92,24 @@ class DR_AI_Content_Controller extends WP_REST_Controller {
                 'permission_callback' => array( $this, 'check_permissions' ),
             ),
         ) );
+
+        // POST /ai/generate-outline
+        register_rest_route( $this->namespace, '/' . $this->rest_base . '/generate-outline', array(
+            array(
+                'methods'             => WP_REST_Server::CREATABLE,
+                'callback'            => array( $this, 'generate_outline' ),
+                'permission_callback' => array( $this, 'check_permissions' ),
+            ),
+        ) );
+
+        // POST /ai/generate-content
+        register_rest_route( $this->namespace, '/' . $this->rest_base . '/generate-content', array(
+            array(
+                'methods'             => WP_REST_Server::CREATABLE,
+                'callback'            => array( $this, 'generate_content' ),
+                'permission_callback' => array( $this, 'check_permissions' ),
+            ),
+        ) );
     }
 
     // =========================================================================
@@ -279,6 +297,77 @@ class DR_AI_Content_Controller extends WP_REST_Controller {
             'message'    => $configured
                 ? __( 'AI service is configured and ready.', 'directreach' )
                 : __( 'Gemini API key is not set. Please configure it in DirectReach Settings > AI.', 'directreach' ),
+        ), 200 );
+    }
+
+    /**
+     * Generate a content outline.
+     *
+     * @param WP_REST_Request $request Full details about the request.
+     * @return WP_REST_Response|WP_Error Response object.
+     */
+    public function generate_outline( $request ) {
+        $args = array(
+            'problem_title'     => $request->get_param( 'problem_title' ),
+            'solution_title'    => $request->get_param( 'solution_title' ),
+            'format'            => $request->get_param( 'format' ) ?: 'article_long',
+            'brain_content'     => $request->get_param( 'brain_content' ) ?: array(),
+            'industries'        => $request->get_param( 'industries' ) ?: array(),
+            'existing_outline'  => $request->get_param( 'existing_outline' ) ?: '',
+            'feedback'          => $request->get_param( 'feedback' ) ?: '',
+            'service_area_id'   => $request->get_param( 'service_area_id' ) ?: 0,
+            'focus'             => $request->get_param( 'focus' ) ?: '',
+            'focus_instruction' => $request->get_param( 'focus_instruction' ) ?: '',
+        );
+
+        $result = $this->generator->generate_outline( $args );
+
+        if ( is_wp_error( $result ) ) {
+            return new WP_REST_Response( array(
+                'success' => false,
+                'error'   => $result->get_error_message(),
+            ), 503 );
+        }
+
+        return new WP_REST_Response( array(
+            'success' => true,
+            'outline' => $result['outline'],
+        ), 200 );
+    }
+
+    /**
+     * Generate full content from an outline.
+     *
+     * @param WP_REST_Request $request Full details about the request.
+     * @return WP_REST_Response|WP_Error Response object.
+     */
+    public function generate_content( $request ) {
+        $args = array(
+            'problem_title'     => $request->get_param( 'problem_title' ),
+            'solution_title'    => $request->get_param( 'solution_title' ),
+            'format'            => $request->get_param( 'format' ) ?: 'article_long',
+            'outline'           => $request->get_param( 'outline' ) ?: '',
+            'brain_content'     => $request->get_param( 'brain_content' ) ?: array(),
+            'industries'        => $request->get_param( 'industries' ) ?: array(),
+            'existing_content'  => $request->get_param( 'existing_content' ) ?: '',
+            'feedback'          => $request->get_param( 'feedback' ) ?: '',
+            'service_area_id'   => $request->get_param( 'service_area_id' ) ?: 0,
+            'focus'             => $request->get_param( 'focus' ) ?: '',
+            'focus_instruction' => $request->get_param( 'focus_instruction' ) ?: '',
+        );
+
+        $result = $this->generator->generate_content( $args );
+
+        if ( is_wp_error( $result ) ) {
+            return new WP_REST_Response( array(
+                'success' => false,
+                'error'   => $result->get_error_message(),
+            ), 503 );
+        }
+
+        return new WP_REST_Response( array(
+            'success' => true,
+            'content' => $result['content'],
         ), 200 );
     }
 

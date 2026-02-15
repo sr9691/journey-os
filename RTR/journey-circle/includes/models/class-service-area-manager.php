@@ -222,6 +222,7 @@ class Service_Area_Manager {
         return array(
             'id'          => $post->ID,
             'title'       => $post->post_title,
+            'name'        => $post->post_title,
             'description' => $post->post_content,
             'client_id'   => get_post_meta( $post->ID, '_jc_client_id', true ),
             'status'      => $status,
