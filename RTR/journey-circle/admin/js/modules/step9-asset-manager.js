@@ -196,8 +196,8 @@
                 else if(td&&td.status==='outline'){icon='<i class="fas fa-list" style="font-size:11px;color:#f57c00"></i>';stxt='Outline ready';sc='#f57c00';}
                 else if(idx===self.batchIndex){icon='<i class="fas fa-spinner fa-spin" style="font-size:11px;color:#f57c00"></i>';stxt='Active';sc='#f57c00';}
                 var cur=idx===self.batchIndex;
-                queueHtml+='<div class="jc-q-item" data-index="'+idx+'" style="display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:13px;border-radius:6px;background:'+(cur?'#f8f9fa':'transparent')+';border:1px solid '+(cur?'#e2e5eb':'transparent')+'">'
-                  +icon+'<span style="font-size:10px;font-weight:700;color:'+fc+'">'+fl+'</span><i class="'+ct.icon+'" style="color:'+ct.color+';width:14px;text-align:center;font-size:12px"></i><span style="flex:1">'+ct.label+'</span><span class="jc-q-status" style="font-size:11px;color:'+sc+'">'+stxt+'</span></div>';
+                queueHtml+='<div class="jc-q-item" data-index="'+idx+'" style="display:flex;align-items:center;gap:8px;padding:6px 14px;font-size:12px;border-radius:6px;background:'+(cur?'#f0f4ff':'transparent')+';border:1px solid '+(cur?'#d0d9ec':'transparent')+';white-space:nowrap">'
+                  +icon+'<span style="font-size:10px;font-weight:700;color:'+fc+'">'+fl+'</span><i class="'+ct.icon+'" style="color:'+ct.color+';width:14px;text-align:center;font-size:12px"></i><span>'+ct.label+'</span><span class="jc-q-status" style="font-size:11px;color:'+sc+'">'+stxt+'</span></div>';
             });
 
             return '<div style="padding:14px 18px;margin-bottom:18px;background:linear-gradient(135deg,#f8f9fa,#eef2f7);border-radius:10px;border:1px solid #e0e4ea"><div style="display:flex;align-items:center;justify-content:space-between"><div>'
@@ -205,11 +205,10 @@
               +'<div style="display:flex;align-items:center;gap:6px"><span style="background:#3b82f6;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;text-transform:uppercase">Solution</span><span style="font-size:13px;color:#555">'+esc(item.solutionTitle)+'</span></div>'
               +'</div><button type="button" class="button button-small" id="jc-back-btn"><i class="fas fa-arrow-left"></i> Back</button></div>'
               +'<div style="margin-top:10px;font-size:12px;color:#666">Generating: '+sum+'</div></div>'
-              +'<div style="display:flex;gap:18px;align-items:flex-start">'
-              +'<div style="width:220px;flex-shrink:0;background:#fff;border:1px solid #eee;border-radius:8px;padding:10px 6px"><div style="font-size:11px;font-weight:700;color:#8c91a0;text-transform:uppercase;letter-spacing:1px;padding:4px 12px 8px">Queue</div><div id="jc-queue">'+queueHtml+'</div></div>'
-              +'<div style="flex:1;min-width:0"><div id="jc-work" style="background:#fff;border:1px solid #eee;border-radius:8px;min-height:300px"><div style="padding:40px;text-align:center;color:#aaa"><i class="fas fa-hourglass-start" style="font-size:2em;margin-bottom:12px;display:block"></i><p>Starting...</p></div></div>'
+              +'<div style="background:#fff;border:1px solid #eee;border-radius:8px;padding:8px 10px;margin-bottom:14px"><div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="font-size:11px;font-weight:700;color:#8c91a0;text-transform:uppercase;letter-spacing:1px">Queue</span></div><div id="jc-queue" style="display:flex;flex-wrap:wrap;gap:6px">'+queueHtml+'</div></div>'
+              +'<div style="width:100%"><div id="jc-work" style="background:#fff;border:1px solid #eee;border-radius:8px;min-height:300px"><div style="padding:40px;text-align:center;color:#aaa"><i class="fas fa-hourglass-start" style="font-size:2em;margin-bottom:12px;display:block"></i><p>Starting...</p></div></div>'
               +'<div id="jc-fb" style="padding:14px 0;margin-top:14px;display:none"><textarea id="jc-fb-input" rows="3" placeholder="Provide feedback..." style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box;margin-bottom:10px"></textarea><div id="jc-actions" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"></div></div>'
-              +'</div></div>';
+              +'</div>';
         }
 
         _bindPanel(panel) {
@@ -275,20 +274,32 @@
                 fb.style.display='';
                 var inp=fb.querySelector('#jc-fb-input'); if(inp){inp.value='';inp.placeholder='Provide feedback on this outline...';}
                 var btns=fb.querySelector('#jc-actions');
-                if(btns) btns.innerHTML='<div style="display:flex;gap:8px"><button type="button" class="button button-secondary" id="jc-act-revise-outline"><i class="fas fa-edit"></i> Revise Outline</button></div><div style="display:flex;gap:8px"><button type="button" class="button" id="jc-act-approve-outline" style="background:#43a047;color:#fff;border-color:#388e3c"><i class="fas fa-check"></i> Approve & Generate Content</button><button type="button" class="button" id="jc-act-skip" style="color:#888;border-color:#ddd"><i class="fas fa-forward"></i> Skip</button></div>';
+                if(btns) btns.innerHTML='<div style="display:flex;gap:8px"><button type="button" class="button button-secondary" id="jc-act-revise-outline"><i class="fas fa-edit"></i> Revise Outline</button><button type="button" class="button button-secondary" id="jc-act-regen" title="Discard this outline and generate a new one from scratch"><i class="fas fa-redo"></i> Regenerate</button></div><div style="display:flex;gap:8px"><button type="button" class="button" id="jc-act-approve-outline" style="background:#43a047;color:#fff;border-color:#388e3c"><i class="fas fa-check"></i> Approve & Generate Content</button><button type="button" class="button" id="jc-act-skip" style="color:#888;border-color:#ddd"><i class="fas fa-forward"></i> Skip</button><button type="button" class="button" id="jc-act-delete" style="color:#dc4545;border-color:#fecaca" title="Delete this content type entirely"><i class="fas fa-trash-alt"></i> Delete</button></div>';
                 var self=this;
                 var r=document.getElementById('jc-act-revise-outline'); if(r) r.addEventListener('click',function(){self._revOutline(gi);});
                 var a=document.getElementById('jc-act-approve-outline'); if(a) a.addEventListener('click',function(){self._approveOutline(gi);});
                 var s=document.getElementById('jc-act-skip'); if(s) s.addEventListener('click',function(){self._skip();});
+                var rg=document.getElementById('jc-act-regen'); if(rg) rg.addEventListener('click',function(){self._regenerate(gi);});
+                var del=document.getElementById('jc-act-delete'); if(del) del.addEventListener('click',function(){self._deleteContent(gi);});
             }
         }
 
         _fmtOutline(outline) {
             if(!outline) return '<p style="color:#aaa">No outline generated.</p>';
 
-            // Try to parse as JSON
+            // Try to parse as JSON — with cleanup for common Gemini quirks
             var parsed=null;
-            try { parsed=typeof outline==='string'?JSON.parse(outline):outline; } catch(e){}
+            try {
+                var jsonStr=typeof outline==='string'?outline:JSON.stringify(outline);
+                // Clean trailing commas before ] or } (common Gemini issue)
+                jsonStr=jsonStr.replace(/,\s*([\]\}])/g,'$1');
+                // Strip markdown code fences if present
+                jsonStr=jsonStr.replace(/^```(?:json)?\s*/i,'').replace(/\s*```\s*$/,'').trim();
+                parsed=JSON.parse(jsonStr);
+            } catch(e){
+                // Also try parsing the original untouched value
+                try { parsed=typeof outline==='object'?outline:null; } catch(e2){}
+            }
 
             // If it's a JSON object/array, render as structured bullets
             if(parsed && typeof parsed==='object') return this._renderOutlineObj(parsed);
@@ -467,12 +478,14 @@
                 var inp=fb.querySelector('#jc-fb-input');if(inp){inp.value='';inp.placeholder='Provide feedback to revise this content...';}
                 var hasNext=this.batchIndex<this.currentItem.genItems.length-1;
                 var btns=fb.querySelector('#jc-actions');
-                if(btns) btns.innerHTML='<div style="display:flex;gap:8px"><button type="button" class="button button-secondary" id="jc-act-revise"><i class="fas fa-edit"></i> Revise</button><button type="button" class="button button-secondary" id="jc-act-dl"><i class="fas fa-download"></i> Download</button></div><div style="display:flex;gap:8px"><button type="button" class="button" id="jc-act-approve" style="background:#43a047;color:#fff;border-color:#388e3c"><i class="fas fa-check"></i> Approve'+(hasNext?' & Next':'')+'</button><button type="button" class="button" id="jc-act-skip" style="color:#888;border-color:#ddd"><i class="fas fa-forward"></i> Skip</button></div>';
+                if(btns) btns.innerHTML='<div style="display:flex;gap:8px"><button type="button" class="button button-secondary" id="jc-act-revise"><i class="fas fa-edit"></i> Revise</button><button type="button" class="button button-secondary" id="jc-act-dl"><i class="fas fa-download"></i> Download</button><button type="button" class="button button-secondary" id="jc-act-regen" title="Discard and regenerate from scratch"><i class="fas fa-redo"></i> Regenerate</button></div><div style="display:flex;gap:8px"><button type="button" class="button" id="jc-act-approve" style="background:#43a047;color:#fff;border-color:#388e3c"><i class="fas fa-check"></i> Approve'+(hasNext?' & Next':'')+'</button><button type="button" class="button" id="jc-act-skip" style="color:#888;border-color:#ddd"><i class="fas fa-forward"></i> Skip</button><button type="button" class="button" id="jc-act-delete" style="color:#dc4545;border-color:#fecaca" title="Delete this content type entirely"><i class="fas fa-trash-alt"></i> Delete</button></div>';
                 var self=this;
                 var rv=document.getElementById('jc-act-revise');if(rv)rv.addEventListener('click',function(){self._revContent(gi);});
                 var dl=document.getElementById('jc-act-dl');if(dl)dl.addEventListener('click',function(){self._dlContent(gi);});
                 var ap=document.getElementById('jc-act-approve');if(ap)ap.addEventListener('click',function(){self._approveContent(gi);});
                 var sk=document.getElementById('jc-act-skip');if(sk)sk.addEventListener('click',function(){self._skip();});
+                var rg=document.getElementById('jc-act-regen');if(rg)rg.addEventListener('click',function(){self._regenerate(gi);});
+                var del=document.getElementById('jc-act-delete');if(del)del.addEventListener('click',function(){self._deleteContent(gi);});
             }
         }
 
@@ -510,6 +523,59 @@
             this.batchIndex++;
             this._updateQueue();
             this._processNext();
+        }
+
+        // =================================================================
+        // DELETE & REGENERATE
+        // =================================================================
+
+        /**
+         * Delete generated content for a specific type. Removes all data
+         * (outline, content, status) and returns to the grid.
+         */
+        _deleteContent(gi) {
+            var pid=this.currentItem.problemId;
+            var ct=CONTENT_TYPES[gi.typeId];
+            var label=ct?ct.label:gi.typeId;
+            if(!confirm('Delete the generated '+label+' ('+(gi.focus===FP?'Problem':'Solution')+')?\n\nThis will remove the outline and all generated content for this type.')) return;
+            // Remove the type data entirely
+            if(this.assets[pid]&&this.assets[pid][gi.focus]&&this.assets[pid][gi.focus].types){
+                delete this.assets[pid][gi.focus].types[gi.typeId];
+            }
+            this.workflow.updateState('contentAssets',this.assets);
+            this.workflow.showNotification(label+' deleted.','info');
+            // Return to grid
+            this.currentItem=null;this.currentTypes=[];this.batchIndex=0;
+            var g=document.getElementById('jc-asset-grid'),p=document.getElementById('jc-asset-creation-panel');
+            if(p) p.style.display='none';
+            if(g){g.style.display='';this._renderGrid(g);}
+        }
+
+        /**
+         * Regenerate content for a specific type from scratch.
+         * Clears existing data and runs through the generation pipeline again.
+         */
+        async _regenerate(gi) {
+            var pid=this.currentItem.problemId;
+            var ct=CONTENT_TYPES[gi.typeId];
+            var label=ct?ct.label:gi.typeId;
+            if(!confirm('Regenerate '+label+' ('+(gi.focus===FP?'Problem':'Solution')+') from scratch?\n\nThis will discard the current outline and content.')) return;
+            // Clear existing data for this type
+            if(this.assets[pid]&&this.assets[pid][gi.focus]&&this.assets[pid][gi.focus].types){
+                delete this.assets[pid][gi.focus].types[gi.typeId];
+            }
+            this.workflow.updateState('contentAssets',this.assets);
+            // Generate fresh outline
+            this._showLoading('Generating outline',ct);
+            try {
+                var state=this.workflow.getState();
+                var outline=await this._apiOutline(state,gi.focus,ct.apiFormat);
+                if(!this.assets[pid][gi.focus].types[gi.typeId]) this.assets[pid][gi.focus].types[gi.typeId]={};
+                Object.assign(this.assets[pid][gi.focus].types[gi.typeId],{outline:outline,status:'outline',format:ct.apiFormat,focus:gi.focus,updatedAt:new Date().toISOString()});
+                this.workflow.updateState('contentAssets',this.assets);
+                this._updateQueue();
+                this._showOutline(gi,outline);
+            } catch(err) { this._showError('Regeneration failed: '+err.message,gi); }
         }
 
         // =================================================================
@@ -553,7 +619,7 @@
                 var gi=items[idx];if(!gi)return;
                 var td=self.assets[pid]&&self.assets[pid][gi.focus]&&self.assets[pid][gi.focus].types&&self.assets[pid][gi.focus].types[gi.typeId];
                 var st=el.querySelector('.jc-q-status'),cur=idx===self.batchIndex;
-                el.style.background=cur?'#f8f9fa':'transparent';el.style.borderColor=cur?'#e2e5eb':'transparent';
+                el.style.background=cur?'#f0f4ff':'transparent';el.style.borderColor=cur?'#d0d9ec':'transparent';
                 if(td&&(td.status==='approved'||td.status==='downloaded')){if(st){st.innerHTML='<i class="fas fa-check-circle" style="color:#43a047"></i>';st.style.color='#43a047';}}
                 else if(td&&td.status==='draft'){if(st){st.textContent='Content ready';st.style.color='#1565c0';}}
                 else if(td&&td.status==='outline'){if(st){st.textContent='Outline ready';st.style.color='#f57c00';}}

@@ -50,13 +50,129 @@
             const state = this.workflow.getState();
             if (!state) return;
 
-            this.updateSummaryStats(state);
-            this.renderCompletionDetails(state);
+            // Gather all data
+            const problems = state.selectedProblems || [];
+            const solutions = state.selectedSolutions || {};
+            const offers = state.offers || {};
+            const contentAssets = state.contentAssets || {};
+            const publishedUrls = state.publishedUrls || {};
+
+            const problemCount = problems.length;
+            const solutionCount = Object.keys(solutions).length;
+            const offerCount = Object.values(offers).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
+            let assetCount = 0;
+            Object.values(contentAssets).forEach(entry => {
+                if (!entry) return;
+                ['problem', 'solution'].forEach(focus => {
+                    if (entry[focus] && entry[focus].types) {
+                        Object.values(entry[focus].types).forEach(t => {
+                            if (t && (t.status === 'approved' || t.status === 'downloaded')) assetCount++;
+                        });
+                    }
+                });
+                if (entry.status && (entry.status === 'approved' || entry.status === 'downloaded')) assetCount++;
+            });
+            const linkedCount = Object.values(publishedUrls).filter(u => u && u.trim()).length;
+
+            // Build the full step 11 content
+            const contentEl = document.querySelector('#jc-step-11 .jc-step-content');
+            if (!contentEl) return;
+
+            contentEl.innerHTML = `
+                <div style="max-width:800px;margin:0 auto">
+                    <!-- Stats Row -->
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px">
+                        ${this._statCard(problemCount, 'Problems', '#ff6b6b', 'fas fa-exclamation-circle')}
+                        ${this._statCard(solutionCount, 'Solutions', '#42a5f5', 'fas fa-lightbulb')}
+                        ${this._statCard(offerCount, 'Offers', '#66bb6a', 'fas fa-tag')}
+                        ${this._statCard(assetCount, 'Assets Created', '#7c4dff', 'fas fa-file-alt')}
+                    </div>
+
+                    <!-- Secondary stats -->
+                    <div style="display:flex;justify-content:center;gap:28px;margin-bottom:28px;font-size:13px;color:#666">
+                        <span><i class="fas fa-link" style="color:#42a5f5;margin-right:4px"></i> ${linkedCount} published URL${linkedCount !== 1 ? 's' : ''} linked</span>
+                        <span><i class="fas fa-tag" style="color:#66bb6a;margin-right:4px"></i> ${offerCount} offer${offerCount !== 1 ? 's' : ''} mapped</span>
+                    </div>
+
+                    <!-- Journey Summary -->
+                    <div style="background:#fff;border:1px solid #e2e5eb;border-radius:10px;margin-bottom:28px;overflow:hidden">
+                        <div style="padding:14px 20px;background:#f8f9fb;border-bottom:1px solid #e2e5eb;font-size:14px;font-weight:600;color:#333">
+                            <i class="fas fa-list-alt" style="color:#42a5f5;margin-right:6px"></i> Journey Summary
+                        </div>
+                        <div style="max-height:360px;overflow-y:auto">
+                            ${problems.map((problem, index) => {
+                                const solution = solutions[problem.id] || 'No solution';
+                                const assetEntry = contentAssets[problem.id];
+                                let assetFormats = [];
+                                if (assetEntry) {
+                                    ['problem', 'solution'].forEach(focus => {
+                                        if (assetEntry[focus] && assetEntry[focus].types) {
+                                            Object.entries(assetEntry[focus].types).forEach(([fmt, t]) => {
+                                                if (t && (t.status === 'approved' || t.status === 'downloaded')) {
+                                                    assetFormats.push(this.formatLabel(fmt) + (focus === 'problem' ? ' (P)' : ' (S)'));
+                                                }
+                                            });
+                                        }
+                                    });
+                                    if (assetEntry.status && (assetEntry.status === 'approved' || assetEntry.status === 'downloaded') && assetEntry.format) {
+                                        assetFormats.push(this.formatLabel(assetEntry.format));
+                                    }
+                                }
+                                const hasContent = assetFormats.length > 0;
+                                const publishedUrl = publishedUrls[problem.id];
+                                const problemOffers = offers[problem.id] || [];
+
+                                return `
+                                    <div style="padding:14px 20px;border-bottom:1px solid #f0f1f4;${index === problems.length - 1 ? 'border-bottom:none;' : ''}">
+                                        <div style="display:flex;align-items:flex-start;gap:10px">
+                                            <span style="background:#ff6b6b;color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0;margin-top:1px">${index + 1}</span>
+                                            <div style="flex:1;min-width:0">
+                                                <div style="font-weight:600;font-size:13px;color:#333;margin-bottom:3px">${this.esc(problem.title)}</div>
+                                                <div style="font-size:12px;color:#666;margin-bottom:6px">
+                                                    <i class="fas fa-arrow-right" style="color:#42a5f5;font-size:10px;margin-right:4px"></i>${this.esc(solution)}
+                                                </div>
+                                                <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px">
+                                                    ${hasContent
+                                                        ? `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:100px;background:#dcfce7;color:#16a34a"><i class="fas fa-check-circle" style="font-size:10px"></i>${assetFormats.join(', ')}</span>`
+                                                        : `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:100px;background:#fff7ed;color:#c2410c"><i class="fas fa-clock" style="font-size:10px"></i>No content</span>`
+                                                    }
+                                                    ${publishedUrl ? `<a href="${this.esc(publishedUrl)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:100px;background:#eff6ff;color:#2563eb;text-decoration:none"><i class="fas fa-link" style="font-size:10px"></i>${this.truncateUrl(publishedUrl)}</a>` : ''}
+                                                    ${problemOffers.length > 0 ? `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:100px;background:#f0fdf4;color:#16a34a"><i class="fas fa-tag" style="font-size:10px"></i>${problemOffers.length} offer${problemOffers.length !== 1 ? 's' : ''}</span>` : ''}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="jc-completion-actions" style="display:flex;justify-content:center;gap:16px;padding-top:0;border-top:none;margin-top:0">
+                        <button type="button" class="btn btn-secondary" id="jc-create-more-assets" style="padding:12px 28px;font-size:14px;border-radius:8px;display:flex;align-items:center;gap:8px">
+                            <i class="fas fa-plus"></i> Create More Assets
+                        </button>
+                        <button type="button" class="btn btn-primary" id="jc-complete-journey" style="padding:12px 28px;font-size:14px;border-radius:8px;display:flex;align-items:center;gap:8px">
+                            <i class="fas fa-check"></i> Complete & Return to Campaign Builder
+                        </button>
+                    </div>
+                </div>
+            `;
 
             if (!this._bound) {
                 this._bound = true;
-                this.bindEvents();
             }
+            // Bind events fresh every time since we rebuilt the DOM
+            this.bindEvents();
+        }
+
+        _statCard(value, label, color, icon) {
+            return `
+                <div style="background:#fff;border:1px solid #e2e5eb;border-radius:10px;padding:20px 16px;text-align:center">
+                    <div style="font-size:12px;color:#8c91a0;margin-bottom:8px"><i class="${icon}" style="color:${color};margin-right:4px"></i>${label}</div>
+                    <div style="font-size:32px;font-weight:700;color:${color};line-height:1">${value}</div>
+                </div>
+            `;
         }
 
         updateSummaryStats(state) {
