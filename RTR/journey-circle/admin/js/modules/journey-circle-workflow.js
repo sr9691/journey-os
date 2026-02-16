@@ -25,6 +25,7 @@
             this.totalSteps = 11;
             this.state = this.loadState();
             this.autoSaveInterval = null;
+            this._dbSyncTimer = null;      // Debounce timer for DB sync
             
             this.init();
         }
@@ -58,9 +59,11 @@
                 }
             });
             
-            // Browser back button / page unload
+            // Browser back button / page unload — persist to DB reliably
             $(window).on('beforeunload', () => {
                 this.saveState();
+                // sendBeacon is reliable during unload (fetch is not)
+                this._beaconSyncState();
             });
         }
 
@@ -98,6 +101,7 @@
                 
                 // Save state
                 this.saveState();
+                this.syncStateToAPI(); // Persist to DB immediately on step change
             });
         }
 
@@ -527,6 +531,52 @@
         }
 
         /**
+         * Beacon-based state sync for use during beforeunload.
+         *
+         * navigator.sendBeacon() is designed to reliably transmit data
+         * during page unload — unlike fetch(), which browsers may cancel.
+         */
+        _beaconSyncState() {
+            if (!this.state.clientId) return;
+
+            const url = `${this.config.restUrl}/journey-state/save`;
+            const payload = JSON.stringify({
+                client_id:         this.state.clientId,
+                service_area_id:   this.state.serviceAreaId || 0,
+                journey_circle_id: this.state.journeyCircleId || 0,
+                current_step:      this.currentStep,
+                state_data:        this.state
+            });
+
+            // sendBeacon sends as Content-Type: text/plain by default.
+            // Wrap in a Blob with the correct type so WP REST parses JSON.
+            const blob = new Blob([payload], { type: 'application/json' });
+
+            // Append nonce as query param since we can't set headers with sendBeacon
+            const separator = url.includes('?') ? '&' : '?';
+            const beaconUrl = `${url}${separator}_wpnonce=${encodeURIComponent(this.config.restNonce)}`;
+
+            const sent = navigator.sendBeacon(beaconUrl, blob);
+            if (sent) {
+                console.log('[JC Workflow] State beaconed to DB on unload');
+            }
+        }
+
+        /**
+         * Debounced DB sync — coalesces rapid updateState() calls
+         * into a single API call after 2 seconds of inactivity.
+         */
+        debouncedSync() {
+            if (this._dbSyncTimer) {
+                clearTimeout(this._dbSyncTimer);
+            }
+            this._dbSyncTimer = setTimeout(() => {
+                this.syncStateToAPI();
+                this._dbSyncTimer = null;
+            }, 2000);
+        }
+
+        /**
          * Sync structured entities (offers, assets, URLs) to relational tables.
          * Runs alongside the state snapshot save.
          */
@@ -682,6 +732,7 @@
                 this.state[key] = value;
             }
             this.saveState();
+            this.debouncedSync(); // Persist to DB after 2s of inactivity
         }
 
         /**

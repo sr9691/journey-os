@@ -356,18 +356,20 @@ RESPONSE FORMAT:
 Return ONLY a valid JSON object with this exact structure:
 {
   "titles": [
-    "First problem title here",
-    "Second problem title here",
-    "Third problem title here",
-    "Fourth problem title here",
-    "Fifth problem title here",
-    "Sixth problem title here",
-    "Seventh problem title here",
-    "Eighth problem title here",
-    "Ninth problem title here",
-    "Tenth problem title here"
+    {"title": "First problem title here", "rationale": "Brief 1-2 sentence explanation of why this problem matters to the target audience."},
+    {"title": "Second problem title here", "rationale": "Brief 1-2 sentence explanation."},
+    {"title": "Third problem title here", "rationale": "Brief 1-2 sentence explanation."},
+    {"title": "Fourth problem title here", "rationale": "Brief 1-2 sentence explanation."},
+    {"title": "Fifth problem title here", "rationale": "Brief 1-2 sentence explanation."},
+    {"title": "Sixth problem title here", "rationale": "Brief 1-2 sentence explanation."},
+    {"title": "Seventh problem title here", "rationale": "Brief 1-2 sentence explanation."},
+    {"title": "Eighth problem title here", "rationale": "Brief 1-2 sentence explanation."},
+    {"title": "Ninth problem title here", "rationale": "Brief 1-2 sentence explanation."},
+    {"title": "Tenth problem title here", "rationale": "Brief 1-2 sentence explanation."}
   ]
 }
+
+Each "rationale" should be a brief 1-2 sentence explanation of why this problem was selected — what makes it relevant to the target industries and service area, and why it would resonate with decision-makers.
 
 Return ONLY the JSON object. No markdown, no code fences, no explanation.
 PROMPT;
@@ -415,11 +417,13 @@ RESPONSE FORMAT:
 Return ONLY a valid JSON object with this exact structure:
 {
   "titles": [
-    "First solution title here",
-    "Second solution title here",
-    "Third solution title here"
+    {"title": "First solution title here", "rationale": "Brief 1-2 sentence explanation of why this solution approach addresses the problem effectively."},
+    {"title": "Second solution title here", "rationale": "Brief 1-2 sentence explanation."},
+    {"title": "Third solution title here", "rationale": "Brief 1-2 sentence explanation."}
   ]
 }
+
+Each "rationale" should be a brief 1-2 sentence explanation of why this solution was recommended — what makes it effective for the stated problem and target audience.
 
 Return ONLY the JSON object. No markdown, no code fences, no explanation.
 PROMPT;
@@ -720,6 +724,27 @@ PROMPT;
     private function sanitize_titles( $titles ) {
         $sanitized = array();
         foreach ( $titles as $title ) {
+            // Handle {title, rationale} objects from updated prompts.
+            if ( is_array( $title ) && isset( $title['title'] ) ) {
+                $t = sanitize_text_field( $title['title'] );
+                $t = trim( $t, '"\'`' );
+                $t = trim( $t );
+
+                if ( strlen( $t ) < 10 || strlen( $t ) > 200 ) {
+                    continue;
+                }
+
+                $item = array( 'title' => $t );
+
+                if ( ! empty( $title['rationale'] ) ) {
+                    $item['rationale'] = sanitize_text_field( $title['rationale'] );
+                }
+
+                $sanitized[] = $item;
+                continue;
+            }
+
+            // Handle plain strings (backward compat / fallback / pad titles).
             if ( ! is_string( $title ) ) {
                 continue;
             }
@@ -926,9 +951,16 @@ PROMPT;
         $count = count( $titles );
         while ( $count < self::MIN_PROBLEM_TITLES ) {
             $pattern = $generic_patterns[ $count % count( $generic_patterns ) ];
-            $title   = sprintf( $pattern, $service_area );
-            if ( ! in_array( $title, $titles, true ) ) {
-                $titles[] = $title;
+            $title_text = sprintf( $pattern, $service_area );
+            // Check for duplicates against both string and object formats.
+            $existing = array_map( function( $t ) {
+                return is_array( $t ) ? $t['title'] : $t;
+            }, $titles );
+            if ( ! in_array( $title_text, $existing, true ) ) {
+                $titles[] = array(
+                    'title'     => $title_text,
+                    'rationale' => 'This is a common challenge in the ' . $service_area . ' space that many organizations face.',
+                );
             }
             $count++;
         }
@@ -957,9 +989,16 @@ PROMPT;
                 ? substr( $problem_title, 0, 57 ) . '...'
                 : $problem_title;
             $pattern = $generic_patterns[ $count % count( $generic_patterns ) ];
-            $title   = sprintf( $pattern, $short_problem );
-            if ( ! in_array( $title, $titles, true ) ) {
-                $titles[] = $title;
+            $title_text = sprintf( $pattern, $short_problem );
+            // Check for duplicates against both string and object formats.
+            $existing = array_map( function( $t ) {
+                return is_array( $t ) ? $t['title'] : $t;
+            }, $titles );
+            if ( ! in_array( $title_text, $existing, true ) ) {
+                $titles[] = array(
+                    'title'     => $title_text,
+                    'rationale' => 'This approach directly targets the core challenge described in the problem statement.',
+                );
             }
             $count++;
         }

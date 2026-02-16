@@ -159,10 +159,12 @@
                 const data = await response.json();
 
                 if (data.success && data.titles && data.titles.length > 0) {
-                    this.problemSuggestions = data.titles.map((t, i) => ({
-                        id: `prob_${i}`,
-                        title: typeof t === 'string' ? t : (t.title || t.text || String(t))
-                    }));
+                    this.problemSuggestions = data.titles.map((t, i) => {
+                        if (typeof t === 'object' && t !== null && t.title) {
+                            return { id: `prob_${i}`, title: t.title, rationale: t.rationale || '' };
+                        }
+                        return { id: `prob_${i}`, title: typeof t === 'string' ? t : String(t), rationale: '' };
+                    });
                     // Persist suggestions so they survive page reload / browser restart
                     this.workflow.updateState('problemSuggestions', this.problemSuggestions);
                     this.renderStep5List(list);
@@ -180,7 +182,9 @@
         }
 
         renderStep5List(container) {
-            container.innerHTML = this.problemSuggestions.map((p, i) => `
+            container.innerHTML = this.problemSuggestions.map((p, i) => {
+                const rationale = p.rationale ? `<div style="margin-top:4px;margin-left:62px;font-size:12px;color:#6b7280;line-height:1.4;font-style:italic">${this.esc(p.rationale)}</div>` : '';
+                return `
                 <div class="jc-problem-card ${this.primaryProblemId === p.id ? 'jc-selected' : ''}"
                      data-id="${p.id}"
                      style="padding:12px;margin-bottom:8px;border:2px solid ${this.primaryProblemId === p.id ? '#4a90d9' : '#ddd'};border-radius:6px;cursor:pointer;background:${this.primaryProblemId === p.id ? '#f0f7ff' : '#fff'};transition:all .2s">
@@ -191,8 +195,9 @@
                         <span style="background:#4a90d9;color:#fff;border-radius:50%;min-width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700">${i + 1}</span>
                         <span style="flex:1;font-size:14px">${this.esc(p.title)}</span>
                     </label>
+                    ${rationale}
                 </div>
-            `).join('');
+            `}).join('');
 
             // Bind radio changes
             container.querySelectorAll('input[name="primaryProblem"]').forEach(radio => {
@@ -274,10 +279,12 @@
                 const data = await response.json();
 
                 if (data.success && data.titles && data.titles.length > 0) {
-                    this.problemSuggestions = data.titles.map((t, i) => ({
-                        id: `prob_${i}`,
-                        title: typeof t === 'string' ? t : (t.title || t.text || String(t))
-                    }));
+                    this.problemSuggestions = data.titles.map((t, i) => {
+                        if (typeof t === 'object' && t !== null && t.title) {
+                            return { id: `prob_${i}`, title: t.title, rationale: t.rationale || '' };
+                        }
+                        return { id: `prob_${i}`, title: typeof t === 'string' ? t : String(t), rationale: '' };
+                    });
                     // Persist suggestions so they survive page reload / browser restart
                     this.workflow.updateState('problemSuggestions', this.problemSuggestions);
                     this.renderStep6List(list, countEl);
@@ -296,6 +303,7 @@
         renderStep6List(container, countEl) {
             container.innerHTML = this.problemSuggestions.map((p, i) => {
                 const isSelected = this.selectedProblems.some(sp => sp.id === p.id);
+                const rationale = p.rationale ? `<div style="margin-top:4px;margin-left:62px;font-size:12px;color:#6b7280;line-height:1.4;font-style:italic">${this.esc(p.rationale)}</div>` : '';
                 return `
                     <div class="jc-problem-checkbox-card"
                          data-id="${p.id}"
@@ -308,6 +316,7 @@
                             <span style="background:#e74c3c;color:#fff;border-radius:50%;min-width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">${i + 1}</span>
                             <span style="flex:1;font-size:14px">${this.esc(p.title)}</span>
                         </label>
+                        ${rationale}
                     </div>
                 `;
             }).join('');
@@ -437,9 +446,12 @@
                     const data = await response.json();
 
                     if (data.success && data.titles && data.titles.length > 0) {
-                        this.solutionSuggestions[problem.id] = data.titles.map(t =>
-                            typeof t === 'string' ? t : (t.title || t.text || String(t))
-                        );
+                        this.solutionSuggestions[problem.id] = data.titles.map(t => {
+                            if (typeof t === 'object' && t !== null && t.title) {
+                                return { title: t.title, rationale: t.rationale || '' };
+                            }
+                            return { title: typeof t === 'string' ? t : String(t), rationale: '' };
+                        });
                     } else {
                         // Provide manual entry option for this problem
                         this.solutionSuggestions[problem.id] = [];
@@ -482,17 +494,24 @@
                             <p style="margin:0 0 8px 0;color:#42a5f5;font-weight:600;font-size:13px">
                                 <i class="fas fa-arrow-right"></i> Select a Solution:
                             </p>
-                            ${hasSolutions ? solutions.map((sol, si) => `
-                                <div style="padding:8px 12px;margin-bottom:6px;border:2px solid ${selectedSol === sol ? '#42a5f5' : '#e0e0e0'};border-radius:4px;cursor:pointer;background:${selectedSol === sol ? '#e3f2fd' : '#fff'};transition:all .2s">
+                            ${hasSolutions ? solutions.map((sol, si) => {
+                                // Support both string and {title, rationale} formats
+                                const solTitle = typeof sol === 'object' ? sol.title : sol;
+                                const solRationale = typeof sol === 'object' ? (sol.rationale || '') : '';
+                                const isSelected = selectedSol === solTitle;
+                                const rationaleHtml = solRationale ? `<div style="margin-top:4px;font-size:12px;color:#6b7280;line-height:1.4;font-style:italic">${this.esc(solRationale)}</div>` : '';
+                                return `
+                                <div style="padding:8px 12px;margin-bottom:6px;border:2px solid ${isSelected ? '#42a5f5' : '#e0e0e0'};border-radius:4px;cursor:pointer;background:${isSelected ? '#e3f2fd' : '#fff'};transition:all .2s">
                                     <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                                        <input type="radio" name="solution_${problem.id}" value="${this.esc(sol)}"
+                                        <input type="radio" name="solution_${problem.id}" value="${this.esc(solTitle)}"
                                                class="jc-solution-radio" data-problem-id="${problem.id}"
-                                               ${selectedSol === sol ? 'checked' : ''}
+                                               ${isSelected ? 'checked' : ''}
                                                style="width:16px;height:16px">
-                                        <span style="flex:1;font-size:14px">${this.esc(sol)}</span>
+                                        <span style="flex:1;font-size:14px">${this.esc(solTitle)}</span>
                                     </label>
+                                    ${rationaleHtml}
                                 </div>
-                            `).join('') : ''}
+                            `}).join('') : ''}
                             <div style="margin-top:8px;display:flex;gap:8px">
                                 <input type="text" class="jc-manual-solution-input" data-problem-id="${problem.id}"
                                        placeholder="Or type a custom solution..." 
