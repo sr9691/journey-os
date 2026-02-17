@@ -125,8 +125,8 @@
                     }
                     break;
                 case 'infographic':
-                    // For now, download as HTML (future: PNG via Nano Banana)
-                    this._downloadHtml(content, format, filename, meta);
+                    // Download as PDF using html2canvas + jsPDF
+                    this._downloadInfographicPdf(content, format, filename, meta);
                     break;
                 default:
                     // Article / Blog: parse JSON and download as DOCX (fallback: HTML)
@@ -669,6 +669,120 @@
                 return;
             }
 
+            // Get color scheme
+            var colorScheme = null;
+            if (window.JCColorSchemeSelector && typeof window.JCColorSchemeSelector.getActiveScheme === 'function') {
+                colorScheme = window.JCColorSchemeSelector.getActiveScheme();
+            }
+            if (!colorScheme) {
+                colorScheme = { bg: '#ffffff', textColor: '#1a1d26', accentColor: '#2563eb', subtextColor: '#6b7280' };
+            }
+
+            // Check if Nano Banana slide generator is available
+            if (window.JCSlideImageGenerator && typeof window.JCSlideImageGenerator.generateAllSlideImages === 'function') {
+                this._downloadPptxWithNanoBanana(slides, filename, meta, colorScheme);
+            } else {
+                // Fallback: build simple image-less PPTX with PptxGenJS
+                this._downloadPptxFallback(slides, filename, meta);
+            }
+        },
+
+        /**
+         * NEW: Generate all slide images via Nano Banana, then assemble PPTX.
+         */
+        _downloadPptxWithNanoBanana: function(slides, filename, meta, colorScheme) {
+            var self = this;
+
+            // Show progress indicator
+            var progressEl = document.createElement('div');
+            progressEl.id = 'jc-pptx-progress';
+            progressEl.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10000;background:#fff;padding:32px 48px;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.2);text-align:center;min-width:300px';
+            progressEl.innerHTML = '<div style="font-size:16px;font-weight:600;margin-bottom:12px">Generating Presentation</div>'
+                + '<div style="font-size:13px;color:#666;margin-bottom:16px">Creating slide images with AI...</div>'
+                + '<div style="background:#e0e0e0;border-radius:10px;height:8px;overflow:hidden"><div id="jc-pptx-bar" style="background:linear-gradient(90deg,#6a1b9a,#9c27b0);height:100%;width:0%;transition:width 0.3s"></div></div>'
+                + '<div id="jc-pptx-status" style="font-size:12px;color:#999;margin-top:8px">0 / ' + slides.length + ' slides</div>';
+            
+            var overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:9999';
+            
+            document.body.appendChild(overlay);
+            document.body.appendChild(progressEl);
+
+            window.JCSlideImageGenerator.generateAllSlideImages(slides, colorScheme, function(completed, total) {
+                var bar = document.getElementById('jc-pptx-bar');
+                var status = document.getElementById('jc-pptx-status');
+                if (bar) bar.style.width = Math.round((completed / total) * 100) + '%';
+                if (status) status.textContent = completed + ' / ' + total + ' slides';
+            }).then(function(imageResults) {
+                // Assemble PPTX with slide images
+                var pptx = new PptxGenJS();
+                pptx.author = 'DirectReach Campaign Builder';
+                pptx.subject = meta && meta.problemTitle ? meta.problemTitle : 'Journey Circle Presentation';
+                pptx.title = slides[0] ? (slides[0].slide_title || 'Presentation') : 'Presentation';
+
+                for (var i = 0; i < slides.length; i++) {
+                    var slide = pptx.addSlide();
+                    var imgResult = imageResults.find(function(r) { return r.slideIndex === i; });
+
+                    if (imgResult && imgResult.imageBase64) {
+                        // Full slide image from Nano Banana
+                        slide.addImage({
+                            data: 'data:image/png;base64,' + imgResult.imageBase64,
+                            x: 0, y: 0, w: '100%', h: '100%'
+                        });
+                    } else {
+                        // Fallback: plain text slide if image generation failed
+                        slide.addText(slides[i].slide_title || 'Slide ' + (i + 1), {
+                            x: 0.8, y: 1.5, w: 8.4, h: 1.5,
+                            fontSize: 28, bold: true, color: '333333', align: 'left'
+                        });
+                        if (slides[i].key_points && slides[i].key_points.length > 0) {
+                            var bullets = slides[i].key_points.map(function(kp) {
+                                return { text: kp, options: { fontSize: 14, color: '666666', bullet: true, lineSpacing: 22 } };
+                            });
+                            slide.addText(bullets, { x: 0.8, y: 3.0, w: 8.4, h: 2.5 });
+                        }
+                    }
+
+                    // Always add speaker notes
+                    if (slides[i].speaker_notes) {
+                        slide.addNotes(slides[i].speaker_notes);
+                    }
+                }
+
+                pptx.writeFile({ fileName: (filename || 'presentation') + '.pptx' });
+
+                // Remove progress UI
+                document.body.removeChild(progressEl);
+                document.body.removeChild(overlay);
+
+            }).catch(function(err) {
+                console.error('Nano Banana PPTX generation failed:', err);
+                document.body.removeChild(progressEl);
+                document.body.removeChild(overlay);
+                
+                // Fallback to basic PptxGenJS
+                alert('AI image generation failed. Generating text-only presentation as fallback.');
+                self._downloadPptxFallback(slides, filename, meta);
+            });
+        },
+
+        /**
+         * Fallback: Original PptxGenJS text-based slide generation
+         * (renamed from the original _downloadPptx logic)
+         * NOTE: receives pre-parsed slides array from _downloadPptx
+         */
+        _downloadPptxFallback: function(slides, filename, meta) {
+            if (!this.isPptxReady()) {
+                alert('PowerPoint library is still loading. Please try again in a moment.');
+                return;
+            }
+
+            if (!slides || slides.length === 0) {
+                alert('No slide data available for fallback generation.');
+                return;
+            }
+
             var pptx = new PptxGenJS();
             pptx.author = 'DirectReach Campaign Builder';
             pptx.subject = meta && meta.problemTitle ? meta.problemTitle : 'Journey Circle Presentation';
@@ -1018,6 +1132,83 @@
             var self = this;
             setTimeout(function() { self._renderCanvasCharts(container); }, 50);
         },
+
+        /**
+         * Download infographic as PDF using html2canvas + jsPDF.
+         * Renders the infographic preview into an offscreen container, 
+         * captures it as an image, and places it in a PDF.
+         */
+        _downloadInfographicPdf: function(content, format, filename, meta) {
+            // Check dependencies
+            if (typeof html2canvas === 'undefined' || typeof jspdf === 'undefined') {
+                console.warn('PDF libraries not loaded, falling back to HTML download');
+                this._downloadHtml(content, format, filename, meta);
+                return;
+            }
+
+            var self = this;
+            var jsPDF = jspdf.jsPDF;
+
+            // Create offscreen container for rendering
+            var offscreen = document.createElement('div');
+            offscreen.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;background:#fff;';
+            document.body.appendChild(offscreen);
+
+            // Render infographic preview into the offscreen container
+            this._renderInfographicPreview(content, offscreen);
+
+            // Wait for rendering to settle (charts, etc.)
+            setTimeout(function() {
+                html2canvas(offscreen, {
+                    scale: 2,
+                    useCORS: true,
+                    backgroundColor: '#ffffff',
+                    logging: false
+                }).then(function(canvas) {
+                    var imgData = canvas.toDataURL('image/png');
+                    var imgWidth = 210; // A4 width in mm
+                    var pageHeight = 297; // A4 height in mm
+                    var imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                    var pdf = new jsPDF('p', 'mm', 'a4');
+                    var position = 0;
+
+                    // Handle multi-page if content is taller than one page
+                    if (imgHeight <= pageHeight) {
+                        pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+                    } else {
+                        var remainingHeight = imgHeight;
+                        while (remainingHeight > 0) {
+                            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                            remainingHeight -= pageHeight;
+                            position -= pageHeight;
+                            if (remainingHeight > 0) {
+                                pdf.addPage();
+                            }
+                        }
+                    }
+
+                    pdf.save((filename || 'infographic') + '.pdf');
+
+                    // Cleanup
+                    document.body.removeChild(offscreen);
+                }).catch(function(err) {
+                    console.error('PDF generation failed:', err);
+                    document.body.removeChild(offscreen);
+                    // Fallback to HTML
+                    self._downloadHtml(content, format, filename, meta);
+                });
+            }, 200);
+        },   
+        
+        /**
+         * Check if PDF generation libraries are ready
+         */
+        isPdfReady: function() {
+            return typeof html2canvas !== 'undefined' && 
+                   typeof jspdf !== 'undefined';
+        },    
+        
 
         // =====================================================================
         // DOCX DOWNLOAD (Article, Blog, LinkedIn)

@@ -342,7 +342,7 @@ class Journey_Circle_Admin {
         wp_enqueue_script(
             $this->plugin_name . '-content-renderer',
             JOURNEY_CIRCLE_PLUGIN_URL . 'admin/js/modules/content-renderer.js',
-            array( 'jquery', 'pptxgenjs', 'docxjs' ),
+            array( 'jquery', 'pptxgenjs', 'docxjs', 'jspdf', 'html2canvas' ),
             $this->version,
             true
         );
@@ -376,6 +376,22 @@ class Journey_Circle_Admin {
                 true
             );
         }
+
+        // jsPDF for PDF generation (infographic download)
+        wp_enqueue_script(
+            'html2canvas',
+            'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
+            array(),
+            '1.4.1',
+            true
+        );
+        wp_enqueue_script(
+            'jspdf',
+            'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js',
+            array( 'html2canvas' ),
+            '2.5.2',
+            true
+        );        
 
         // Late-step modules
         $late_modules = array(

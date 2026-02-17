@@ -239,6 +239,183 @@
          */
         setQuality: function(q) {
             CONFIG.quality = (q === 'pro') ? 'pro' : 'standard';
+        },
+
+        /**
+         * Generate AI images for ALL slides in a presentation.
+         * Each slide's content + color scheme is sent to Nano Banana.
+         * Returns array of { slideIndex, imageBase64 } objects.
+         *
+         * @param {Array} slides - Parsed slide data from Gemini
+         * @param {Object} colorScheme - Client's color scheme
+         * @param {Function} onProgress - Callback(completed, total)
+         * @returns {Promise<Array>} Array of { slideIndex, imageBase64 }
+         */
+        generateAllSlideImages: function(slides, colorScheme, onProgress) {
+            var self = this;
+            var total = slides.length;
+            var completed = 0;
+            var results = [];
+
+            if (total === 0) {
+                return Promise.resolve(results);
+            }
+
+            // Build queue of slide items
+            var queue = [];
+            for (var i = 0; i < slides.length; i++) {
+                queue.push({ slide: slides[i], index: i });
+            }
+
+            // Process with concurrency limit using batches
+            return new Promise(function(resolveAll, rejectAll) {
+                var pos = 0;
+
+                function processNext() {
+                    if (pos >= queue.length) {
+                        if (completed >= total) {
+                            // Sort by slide index before resolving
+                            results.sort(function(a, b) { return a.slideIndex - b.slideIndex; });
+                            resolveAll(results);
+                        }
+                        return;
+                    }
+
+                    // Take up to maxConcurrent items
+                    var batch = queue.slice(pos, pos + CONFIG.maxConcurrent);
+                    pos += batch.length;
+
+                    var batchPromises = batch.map(function(item) {
+                        return self._generateSingleSlideImage(item.slide, item.index, colorScheme)
+                            .then(function(result) {
+                                results.push(result);
+                            })
+                            .catch(function(err) {
+                                console.warn('Slide image generation failed for slide ' + (item.index + 1) + ':', err.message);
+                                results.push({ slideIndex: item.index, imageBase64: null, error: err.message });
+                            })
+                            .finally(function() {
+                                completed++;
+                                if (typeof onProgress === 'function') {
+                                    onProgress(completed, total);
+                                }
+                            });
+                    });
+
+                    Promise.all(batchPromises).then(function() {
+                        processNext();
+                    });
+                }
+
+                processNext();
+            });
+        },
+
+        /**
+         * Generate image for a single slide via Nano Banana.
+         *
+         * @param {Object} slide - Single slide data object
+         * @param {number} slideIndex - Index of slide in deck
+         * @param {Object} colorScheme - Client's color scheme
+         * @returns {Promise<Object>} { slideIndex, imageBase64 }
+         */
+        _generateSingleSlideImage: function(slide, slideIndex, colorScheme) {
+            var self = this;
+            var prompt = this._buildSlideImagePrompt(slide, colorScheme);
+
+            return new Promise(function(resolve, reject) {
+                var payload = {
+                    prompt:        prompt,
+                    slide_title:   slide.slide_title || '',
+                    section:       slide.section || '',
+                    key_points:    slide.key_points || [],
+                    data_points:   slide.data_points || [],
+                    visual_element: slide.visual_element || null,
+                    slide_data:    slide,
+                    color_scheme:  colorScheme,
+                    quality:       CONFIG.quality,
+                    width:         1920,
+                    height:        1080
+                };
+
+                $.ajax({
+                    url: CONFIG.endpoint,
+                    method: 'POST',
+                    headers: CONFIG.nonce ? { 'X-WP-Nonce': CONFIG.nonce } : {},
+                    contentType: 'application/json',
+                    data: JSON.stringify(payload),
+                    timeout: CONFIG.timeout,
+                    success: function(response) {
+                        if (response.success && response.image_base64) {
+                            resolve({
+                                slideIndex: slideIndex,
+                                imageBase64: response.image_base64
+                            });
+                        } else {
+                            var msg = (response && response.message) || 'No image returned';
+                            reject(new Error(msg));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        var msg = 'Slide image generation failed';
+                        if (status === 'timeout') {
+                            msg = 'Slide image generation timed out';
+                        } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                            msg = xhr.responseJSON.message;
+                        }
+                        reject(new Error(msg));
+                    }
+                });
+            });
+        },
+
+        /**
+         * Build a detailed prompt for Nano Banana to render a full slide.
+         *
+         * @param {Object} slide - Slide data
+         * @param {Object} colorScheme - Color scheme with bg, textColor, accentColor, subtextColor
+         * @returns {string} Complete prompt string
+         */
+        _buildSlideImagePrompt: function(slide, colorScheme) {
+            var parts = [
+                'Create a professional presentation slide image (1920x1080, 16:9 ratio).',
+                'Style: clean, modern, corporate presentation.'
+            ];
+
+            // Color scheme
+            if (colorScheme) {
+                parts.push('Color palette: background ' + (colorScheme.bg || '#ffffff')
+                    + ', primary text ' + (colorScheme.textColor || '#1a1d26')
+                    + ', accent color ' + (colorScheme.accentColor || '#2563eb')
+                    + ', secondary ' + (colorScheme.subtextColor || '#6b7280') + '.');
+            }
+
+            // Slide content
+            if (slide.slide_title) {
+                parts.push('Title: "' + slide.slide_title + '"');
+            }
+            if (slide.section) {
+                parts.push('Section label: "' + slide.section + '"');
+            }
+            if (slide.key_points && slide.key_points.length > 0) {
+                parts.push('Key points: ' + slide.key_points.map(function(kp) { return '"' + kp + '"'; }).join(', '));
+            }
+            if (slide.data_points && slide.data_points.length > 0) {
+                parts.push('Data points: ' + slide.data_points.join(', '));
+            }
+            if (slide.visual_element && slide.visual_element.type) {
+                parts.push('Include a ' + slide.visual_element.type.replace(/_/g, ' ') + ' visualization.');
+                if (slide.visual_element.data) {
+                    try {
+                        parts.push('Chart data: ' + JSON.stringify(slide.visual_element.data));
+                    } catch(e) { /* skip if stringify fails */ }
+                }
+            }
+            if (slide.speaker_notes) {
+                parts.push('Context (for visual style, not displayed as text): ' + slide.speaker_notes);
+            }
+
+            return parts.join(' ');
         }
     };
 
@@ -535,138 +712,13 @@
         };
 
         // =====================================================================
-        // OVERRIDE THE download() METHOD
+        // NOTE: download() is NO LONGER overridden here.
+        // content-renderer.js now handles:
+        //   - Infographic → PDF via html2canvas + jsPDF
+        //   - Presentation → Nano Banana via generateAllSlideImages()
+        // The _downloadPptxWithImages and _buildPptxWithImages methods above
+        // remain available for the JC_AI_IMAGES_ENABLED visual-slides-only path.
         // =====================================================================
-
-        // Store original download method.
-        var _originalDownload = CR.download;
-
-        /**
-         * Enhanced download that adds:
-         *   - Infographic → PNG via Nano Banana (AI-generated image)
-         *   - Presentation → shapes-only PPTX by default (editable)
-         *     Set window.JC_AI_IMAGES_ENABLED = true to use AI images instead
-         */
-        CR.download = function(content, format, filename, meta) {
-            if (format === 'infographic') {
-                this._downloadInfographicPng(content, filename, meta);
-            } else if (format === 'presentation' && window.JC_AI_IMAGES_ENABLED === true) {
-                // Only use AI images for presentations when explicitly enabled
-                this._downloadPptxWithImages(content, filename, meta, {
-                    useAiImages: true,
-                    quality: CONFIG.quality
-                });
-            } else if (_originalDownload) {
-                _originalDownload.call(this, content, format, filename, meta);
-            }
-        };
-
-        /**
-         * Download infographic as PNG via Nano Banana.
-         *
-         * Builds a single-image prompt from the infographic JSON, calls the
-         * slide image endpoint, and downloads the result as a PNG file.
-         */
-        CR._downloadInfographicPng = function(content, filename, meta) {
-            var self = this;
-            var parsed = this._parseJson ? this._parseJson(content) : null;
-
-            if (!parsed || !parsed.sections) {
-                // Can't parse — fallback to HTML download
-                if (_originalDownload) _originalDownload.call(this, content, 'infographic', filename, meta);
-                return;
-            }
-
-            // Show progress overlay
-            var progressEl = this._showImageProgress(1);
-            this._updateImageProgress(progressEl, 0, 1);
-
-            // Build the infographic as a single slide image request
-            var keyPoints = [];
-            var dataPoints = [];
-            var sections = parsed.sections || [];
-            for (var i = 0; i < sections.length; i++) {
-                var sec = sections[i];
-                if (sec.heading) keyPoints.push(sec.heading);
-                if (sec.data_points) {
-                    for (var d = 0; d < sec.data_points.length; d++) {
-                        var dp = sec.data_points[d];
-                        dataPoints.push((dp.label || '') + ': ' + (dp.value || ''));
-                    }
-                }
-            }
-
-            // Build visual element as a composite description for the whole infographic
-            var visualElement = {
-                type: 'infographic_full',
-                data: {
-                    title: parsed.title || '',
-                    subtitle: parsed.subtitle || '',
-                    sections: sections.map(function(sec) {
-                        return {
-                            heading: sec.heading || '',
-                            description: sec.description || '',
-                            data_points: sec.data_points || [],
-                            visual_element: sec.visual_element || null
-                        };
-                    }),
-                    footer: parsed.footer || '',
-                    call_to_action: parsed.call_to_action || ''
-                }
-            };
-
-            var payload = {
-                slide_title:    parsed.title || 'Infographic',
-                section:        'Infographic',
-                key_points:     keyPoints,
-                data_points:    dataPoints,
-                visual_element: visualElement,
-                quality:        CONFIG.quality
-            };
-
-            $.ajax({
-                url: CONFIG.endpoint,
-                method: 'POST',
-                headers: CONFIG.nonce ? { 'X-WP-Nonce': CONFIG.nonce } : {},
-                contentType: 'application/json',
-                data: JSON.stringify(payload),
-                timeout: CONFIG.timeout,
-                success: function(response) {
-                    self._updateImageProgress(progressEl, 1, 1);
-                    setTimeout(function() { self._hideImageProgress(progressEl); }, 300);
-
-                    if (response.success && response.image_base64) {
-                        // Convert base64 to blob and download as PNG
-                        var byteChars = atob(response.image_base64);
-                        var byteNums = new Array(byteChars.length);
-                        for (var i = 0; i < byteChars.length; i++) {
-                            byteNums[i] = byteChars.charCodeAt(i);
-                        }
-                        var byteArray = new Uint8Array(byteNums);
-                        var blob = new Blob([byteArray], { type: response.mime_type || 'image/png' });
-
-                        var ext = (response.mime_type || '').indexOf('jpeg') !== -1 ? '.jpg' : '.png';
-                        var url = URL.createObjectURL(blob);
-                        var a = document.createElement('a');
-                        a.href = url;
-                        a.download = (filename || 'infographic') + ext;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
-                    } else {
-                        console.warn('[JC] No image returned for infographic, falling back to HTML');
-                        if (_originalDownload) _originalDownload.call(self, content, 'infographic', filename, meta);
-                    }
-                },
-                error: function(xhr, status, error) {
-                    self._hideImageProgress(progressEl);
-                    console.error('[JC] Infographic image generation failed:', status, error);
-                    // Fallback to HTML download
-                    if (_originalDownload) _originalDownload.call(self, content, 'infographic', filename, meta);
-                }
-            });
-        };
 
         console.log('[JC] Slide image generator patched onto ContentRenderer');
     }
