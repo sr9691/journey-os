@@ -78,198 +78,226 @@
             this.render(container);
         }
 
-        render(container) {
-            const linkedCount = Object.values(this.publishedUrls).filter(u => u && u.trim()).length;
-            // Count total approved/downloaded assets across new problem/solution split structure
-            let totalAssets = 0;
-            Object.values(this.contentAssets).forEach(entry => {
-                if (!entry) return;
-                // New structure: entry = { problem: { types: {} }, solution: { types: {} } }
-                ['problem', 'solution'].forEach(focus => {
-                    if (entry[focus] && entry[focus].types) {
-                        Object.values(entry[focus].types).forEach(t => {
-                            if (t && (t.status === 'approved' || t.status === 'downloaded')) totalAssets++;
-                        });
-                    }
-                });
-                // Legacy flat structure fallback: entry = { status: 'approved', ... }
-                if (entry.status && (entry.status === 'approved' || entry.status === 'downloaded')) totalAssets++;
+    render(container) {
+        // Count linked URLs (now keyed as "pid_problem" and "pid_solution")
+        const linkedCount = Object.values(this.publishedUrls).filter(u => u && u.trim()).length;
+
+        // Build list of all linkable asset rows
+        const assetRows = [];
+        this.selectedProblems.forEach((problem, index) => {
+            const solution = this.selectedSolutions[problem.id] || '';
+            const assetEntry = this.contentAssets[problem.id];
+
+            // Check for problem-focused content
+            let hasProblemContent = false;
+            let hasSolutionContent = false;
+
+            if (assetEntry) {
+                if (assetEntry.problem && assetEntry.problem.types) {
+                    Object.values(assetEntry.problem.types).forEach(t => {
+                        if (t && (t.status === 'approved' || t.status === 'downloaded')) hasProblemContent = true;
+                    });
+                }
+                if (assetEntry.solution && assetEntry.solution.types) {
+                    Object.values(assetEntry.solution.types).forEach(t => {
+                        if (t && (t.status === 'approved' || t.status === 'downloaded')) hasSolutionContent = true;
+                    });
+                }
+                // Legacy flat structure
+                if (assetEntry.status && (assetEntry.status === 'approved' || assetEntry.status === 'downloaded')) {
+                    hasProblemContent = true;
+                }
+            }
+
+            // Always show problem row
+            assetRows.push({
+                problemId: problem.id,
+                urlKey: `${problem.id}_problem`,
+                focus: 'problem',
+                index: index,
+                title: problem.title,
+                subtitle: solution ? `Solution: ${solution}` : '',
+                hasContent: hasProblemContent,
+                focusLabel: 'Problem',
+                focusColor: '#e74c3c',
+                focusIcon: 'fas fa-exclamation-circle'
             });
 
-            container.innerHTML = `
-                <!-- Summary -->
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;margin-bottom:16px;background:#f8f9fa;border-radius:8px;border:1px solid #eee">
-                    <span style="font-size:14px;font-weight:600">Link Published Content</span>
-                    <span style="font-size:13px;color:${linkedCount > 0 ? '#2e7d32' : '#666'}">
-                        <i class="fas fa-link" style="color:${linkedCount > 0 ? '#4caf50' : '#90a4ae'}"></i>
-                        ${linkedCount} / ${this.selectedProblems.length} linked
-                    </span>
-                </div>
+            // Show solution row if there's a solution title
+            if (solution) {
+                assetRows.push({
+                    problemId: problem.id,
+                    urlKey: `${problem.id}_solution`,
+                    focus: 'solution',
+                    index: index,
+                    title: solution,
+                    subtitle: `Problem: ${problem.title}`,
+                    hasContent: hasSolutionContent,
+                    focusLabel: 'Solution',
+                    focusColor: '#42a5f5',
+                    focusIcon: 'fas fa-lightbulb'
+                });
+            }
+        });
 
-                <p style="font-size:13px;color:#666;margin-bottom:16px;padding:0 4px;line-height:1.5">
-                    After publishing your content assets on the client's website (or any platform), 
-                    paste the live URLs below to complete the journey circle. This step is optional — 
-                    you can skip it and add URLs later from the dashboard.
-                </p>
+        const totalSlots = assetRows.length;
 
-                <!-- URL Form for Each Problem -->
-                ${this.selectedProblems.map((problem, index) => {
-                    const solution = this.selectedSolutions[problem.id] || '';
-                    const assetEntry = this.contentAssets[problem.id];
-                    let hasContent = false;
-                    if (assetEntry) {
-                        ['problem', 'solution'].forEach(focus => {
-                            if (assetEntry[focus] && assetEntry[focus].types) {
-                                Object.values(assetEntry[focus].types).forEach(t => {
-                                    if (t && (t.status === 'approved' || t.status === 'downloaded')) hasContent = true;
-                                });
-                            }
-                        });
-                        // Legacy fallback
-                        if (assetEntry.status && (assetEntry.status === 'approved' || assetEntry.status === 'downloaded')) hasContent = true;
-                    }
-                    const currentUrl = this.publishedUrls[problem.id] || '';
-                    const isLinked = currentUrl && currentUrl.trim().length > 0;
+        container.innerHTML = `
+            <!-- Summary -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;margin-bottom:16px;background:#f8f9fa;border-radius:8px;border:1px solid #eee">
+                <span style="font-size:14px;font-weight:600">Link Published Content</span>
+                <span style="font-size:13px;color:${linkedCount > 0 ? '#2e7d32' : '#666'}">
+                    <i class="fas fa-link" style="color:${linkedCount > 0 ? '#4caf50' : '#90a4ae'}"></i>
+                    ${linkedCount} / ${totalSlots} linked
+                </span>
+            </div>
 
-                    return `
-                        <div class="jc-url-section" data-problem-id="${problem.id}"
-                             style="margin-bottom:14px;border:1px solid ${isLinked ? '#c8e6c9' : '#ddd'};border-radius:8px;overflow:hidden;background:${isLinked ? '#f1f8e9' : '#fff'}">
-                            
-                            <!-- Header -->
-                            <div style="padding:12px 16px;background:${isLinked ? '#e8f5e9' : '#f8f9fa'};border-bottom:1px solid #eee;display:flex;align-items:center;gap:12px">
-                                <span style="background:${isLinked ? '#66bb6a' : '#e74c3c'};color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0">
-                                    ${isLinked ? '<i class="fas fa-check" style="font-size:11px"></i>' : (index + 1)}
-                                </span>
-                                <div style="flex:1;min-width:0">
-                                    <div style="font-weight:600;font-size:13px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${this.esc(problem.title)}</div>
-                                    <div style="font-size:11px;color:#42a5f5;margin-top:1px">
-                                        <i class="fas fa-arrow-right" style="font-size:9px"></i> ${this.esc(solution)}
-                                    </div>
+            <p style="font-size:13px;color:#666;margin-bottom:16px;padding:0 4px;line-height:1.5">
+                After publishing your content assets on the client's website (or any platform), 
+                paste the live URLs below to complete the journey circle. Both problem-focused and 
+                solution-focused content can be linked separately. This step is optional — 
+                you can skip it and add URLs later from the dashboard.
+            </p>
+
+            <!-- URL Form for Each Asset Row -->
+            ${assetRows.map((row) => {
+                const currentUrl = this.publishedUrls[row.urlKey] || 
+                                   // Backward compat: check old key format (just problemId)
+                                   (row.focus === 'problem' ? (this.publishedUrls[row.problemId] || '') : '');
+                const isLinked = currentUrl && currentUrl.trim().length > 0;
+
+                return `
+                    <div class="jc-url-section" data-url-key="${row.urlKey}" data-problem-id="${row.problemId}"
+                         style="margin-bottom:14px;border:1px solid ${isLinked ? '#c8e6c9' : '#ddd'};border-radius:8px;overflow:hidden;background:${isLinked ? '#f1f8e9' : '#fff'}">
+                        
+                        <!-- Header -->
+                        <div style="padding:12px 16px;background:${isLinked ? '#e8f5e9' : '#f8f9fa'};border-bottom:1px solid #eee;display:flex;align-items:center;gap:12px">
+                            <span style="background:${isLinked ? '#66bb6a' : row.focusColor};color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0">
+                                ${isLinked ? '<i class="fas fa-check" style="font-size:11px"></i>' : `<i class="${row.focusIcon}" style="font-size:11px"></i>`}
+                            </span>
+                            <div style="flex:1;min-width:0">
+                                <div style="display:flex;align-items:center;gap:6px">
+                                    <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:${row.focusColor};background:${row.focusColor}15;padding:1px 6px;border-radius:3px">${row.focusLabel}</span>
+                                    <span style="font-weight:600;font-size:13px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${this.esc(row.title)}</span>
                                 </div>
-                                <div style="flex-shrink:0">
-                                    ${hasContent 
-                                        ? '<span style="font-size:11px;color:#2e7d32;background:#e8f5e9;padding:2px 8px;border-radius:10px"><i class="fas fa-file-alt"></i> Content Ready</span>'
-                                        : '<span style="font-size:11px;color:#999;background:#f5f5f5;padding:2px 8px;border-radius:10px"><i class="fas fa-clock"></i> No Content Yet</span>'
-                                    }
-                                </div>
+                                ${row.subtitle ? `<div style="font-size:11px;color:#999;margin-top:1px">${this.esc(row.subtitle)}</div>` : ''}
                             </div>
-
-                            <!-- URL Input -->
-                            <div style="padding:12px 16px">
-                                <div style="display:flex;gap:8px;align-items:center">
-                                    <i class="fas fa-globe" style="color:#90a4ae;flex-shrink:0"></i>
-                                    <input type="url" 
-                                           class="jc-published-url-input" 
-                                           data-problem-id="${problem.id}"
-                                           value="${this.esc(currentUrl)}"
-                                           placeholder="https://client-site.com/published-article-url"
-                                           style="flex:1;padding:8px 12px;border:1px solid ${isLinked ? '#a5d6a7' : '#ddd'};border-radius:4px;font-size:13px">
-                                    <button type="button" 
-                                            class="button button-small jc-save-url-btn ${isLinked ? 'button-primary' : ''}" 
-                                            data-problem-id="${problem.id}"
-                                            style="white-space:nowrap">
-                                        ${isLinked ? '<i class="fas fa-check"></i> Saved' : '<i class="fas fa-save"></i> Save'}
-                                    </button>
-                                    ${isLinked ? `
-                                        <a href="${this.esc(currentUrl)}" target="_blank" rel="noopener" 
-                                           style="color:#1976d2;flex-shrink:0;padding:4px" title="Open URL">
-                                            <i class="fas fa-external-link-alt"></i>
-                                        </a>
-                                    ` : ''}
-                                </div>
-                                <div class="jc-url-error" data-problem-id="${problem.id}" 
-                                     style="display:none;color:#e53935;font-size:12px;margin-top:6px;padding-left:26px"></div>
+                            <div style="flex-shrink:0">
+                                ${row.hasContent 
+                                    ? '<span style="font-size:11px;color:#2e7d32;background:#e8f5e9;padding:2px 8px;border-radius:10px"><i class="fas fa-file-alt"></i> Content Ready</span>'
+                                    : '<span style="font-size:11px;color:#999;background:#f5f5f5;padding:2px 8px;border-radius:10px"><i class="fas fa-clock"></i> No Content Yet</span>'
+                                }
                             </div>
                         </div>
-                    `;
-                }).join('')}
 
-                <!-- Bulk actions -->
-                ${linkedCount > 0 ? `
-                    <div style="padding:12px 16px;margin-top:12px;text-align:center;background:#e8f5e9;border-radius:8px;border:1px solid #c8e6c9">
-                        <i class="fas fa-check-circle" style="color:#66bb6a;margin-right:6px"></i>
-                        <span style="color:#2e7d32;font-size:13px;font-weight:600">${linkedCount} URL${linkedCount !== 1 ? 's' : ''} linked. You can proceed to the final step.</span>
+                        <!-- URL Input -->
+                        <div style="padding:12px 16px">
+                            <div style="display:flex;gap:8px;align-items:center">
+                                <i class="fas fa-globe" style="color:#90a4ae;flex-shrink:0"></i>
+                                <input type="url" 
+                                       class="jc-published-url-input" 
+                                       data-url-key="${row.urlKey}"
+                                       data-problem-id="${row.problemId}"
+                                       value="${this.esc(currentUrl)}"
+                                       placeholder="https://client-site.com/published-${row.focus}-article-url"
+                                       style="flex:1;padding:8px 12px;border:1px solid ${isLinked ? '#a5d6a7' : '#ddd'};border-radius:4px;font-size:13px">
+                                <button type="button" 
+                                        class="button button-small jc-save-url-btn ${isLinked ? 'button-primary' : ''}" 
+                                        data-url-key="${row.urlKey}"
+                                        data-problem-id="${row.problemId}"
+                                        style="white-space:nowrap">
+                                    ${isLinked ? '<i class="fas fa-check"></i> Saved' : '<i class="fas fa-save"></i> Save'}
+                                </button>
+                                ${isLinked ? `
+                                    <a href="${this.esc(currentUrl)}" target="_blank" rel="noopener" 
+                                       style="color:#1976d2;flex-shrink:0;padding:4px" title="Open URL">
+                                        <i class="fas fa-external-link-alt"></i>
+                                    </a>
+                                ` : ''}
+                            </div>
+                            <div class="jc-url-error" data-url-key="${row.urlKey}" 
+                                 style="display:none;color:#e53935;font-size:12px;margin-top:6px;padding-left:26px"></div>
+                        </div>
                     </div>
-                ` : ''}
-            `;
+                `;
+            }).join('')}
 
-            this.bindEvents(container);
-        }
+            <!-- Bulk actions -->
+            ${linkedCount > 0 ? `
+                <div style="padding:12px 16px;margin-top:12px;text-align:center;background:#e8f5e9;border-radius:8px;border:1px solid #c8e6c9">
+                    <i class="fas fa-check-circle" style="color:#66bb6a;margin-right:6px"></i>
+                    <span style="color:#2e7d32;font-size:13px;font-weight:600">${linkedCount} URL${linkedCount !== 1 ? 's' : ''} linked. You can proceed to the final step.</span>
+                </div>
+            ` : ''}
+        `;
 
-        bindEvents(container) {
-            // Save URL buttons
-            container.querySelectorAll('.jc-save-url-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const problemId = btn.dataset.problemId;
-                    this.saveUrl(problemId, container);
-                });
+        this.bindEvents(container);
+    }
+
+    bindEvents(container) {
+        container.querySelectorAll('.jc-save-url-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const urlKey = btn.dataset.urlKey;
+                this.saveUrl(urlKey, container);
             });
+        });
 
-            // Enter key on URL input
-            container.querySelectorAll('.jc-published-url-input').forEach(input => {
-                input.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        const problemId = input.dataset.problemId;
-                        this.saveUrl(problemId, container);
-                    }
-                });
-
-                // Auto-save on blur
-                input.addEventListener('blur', () => {
-                    const problemId = input.dataset.problemId;
-                    const url = input.value.trim();
-                    if (url && this.isValidUrl(url)) {
-                        this.saveUrl(problemId, container);
-                    }
-                });
-            });
-        }
-
-        saveUrl(problemId, container) {
-            const input = container.querySelector(`.jc-published-url-input[data-problem-id="${problemId}"]`);
-            const errorEl = container.querySelector(`.jc-url-error[data-problem-id="${problemId}"]`);
-            if (!input) return;
-
-            const url = input.value.trim();
-
-            // Allow empty (clear the URL)
-            if (!url) {
-                delete this.publishedUrls[problemId];
-                this.workflow.updateState('publishedUrls', this.publishedUrls);
-                this.render(container);
-                return;
-            }
-
-            // Validate
-            if (!this.isValidUrl(url)) {
-                if (errorEl) {
-                    errorEl.textContent = 'Please enter a valid URL (e.g., https://example.com/article).';
-                    errorEl.style.display = 'block';
-                    setTimeout(() => { errorEl.style.display = 'none'; }, 4000);
+        container.querySelectorAll('.jc-published-url-input').forEach(input => {
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.saveUrl(input.dataset.urlKey, container);
                 }
-                input.style.borderColor = '#e53935';
-                input.focus();
-                return;
-            }
+            });
+            input.addEventListener('blur', () => {
+                const url = input.value.trim();
+                if (url && this.isValidUrl(url)) {
+                    this.saveUrl(input.dataset.urlKey, container);
+                }
+            });
+        });
+    }
 
-            // Save
-            this.publishedUrls[problemId] = url;
+    saveUrl(urlKey, container) {
+        const input = container.querySelector(`.jc-published-url-input[data-url-key="${urlKey}"]`);
+        const errorEl = container.querySelector(`.jc-url-error[data-url-key="${urlKey}"]`);
+        if (!input) return;
+
+        const url = input.value.trim();
+
+        if (!url) {
+            delete this.publishedUrls[urlKey];
             this.workflow.updateState('publishedUrls', this.publishedUrls);
-
-            // Show success feedback briefly
-            const btn = container.querySelector(`.jc-save-url-btn[data-problem-id="${problemId}"]`);
-            if (btn) {
-                btn.innerHTML = '<i class="fas fa-check"></i> Saved!';
-                btn.classList.add('button-primary');
-            }
-
-            // Re-render to reflect updated state
-            setTimeout(() => this.render(container), 600);
-
-            // Also try to persist to API if we have a journey circle ID
-            this.persistUrlToApi(problemId, url);
+            this.render(container);
+            return;
         }
+
+        if (!this.isValidUrl(url)) {
+            if (errorEl) {
+                errorEl.textContent = 'Please enter a valid URL (e.g., https://example.com/article).';
+                errorEl.style.display = 'block';
+                setTimeout(() => { errorEl.style.display = 'none'; }, 4000);
+            }
+            input.style.borderColor = '#e53935';
+            input.focus();
+            return;
+        }
+
+        this.publishedUrls[urlKey] = url;
+        this.workflow.updateState('publishedUrls', this.publishedUrls);
+
+        const btn = container.querySelector(`.jc-save-url-btn[data-url-key="${urlKey}"]`);
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-check"></i> Saved!';
+            btn.classList.add('button-primary');
+        }
+
+        setTimeout(() => this.render(container), 600);
+
+        // Extract problemId from urlKey for API persistence
+        const problemId = input.dataset.problemId;
+        this.persistUrlToApi(problemId, url);
+    }
 
         async persistUrlToApi(problemId, url) {
             const state = this.workflow.getState();
