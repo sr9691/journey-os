@@ -1,1 +1,1 @@
-"""DirectReach AI agents for content intelligence."""
+# DirectReach AI agents for content intelligence.

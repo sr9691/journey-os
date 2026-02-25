@@ -1,4 +1,4 @@
-### Configuration module for Content Intelligence System.
+# Configuration module for Content Intelligence System.
 
 from .settings import settings, Settings
 

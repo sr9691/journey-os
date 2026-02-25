@@ -1,4 +1,4 @@
-"""LangGraph workflow definitions for DirectReach."""
+# LangGraph workflow definitions for DirectReach.
 
 from .email_generation import create_email_generation_graph, email_generation_graph
 

@@ -2,23 +2,36 @@
 # WordPress REST API Client
 # =============================================================================
 #
-# Provides async methods to interact with DirectReach WordPress tables:
-# - cpd_clients: Client profiles
-# - dr_campaign_settings: Campaign configurations
-# - rtr_room_content_links: Content assets per room
-# - rtr_prospects: Qualified prospects with scores
-# - rtr_email_templates: Email prompt templates
-# - rtr_email_tracking: Email generation logs
+# Provides async methods to interact with the journey-os WordPress plugin.
 #
-# All methods use httpx for async HTTP requests.
+# Two API namespaces exist in the WordPress plugin:
+#
+#   RTR Reading Room (directreach/v1/reading-room):
+#     - GET /prospects          - List prospects (filterable by campaign, room)
+#     - GET /prospects/{id}     - Get single prospect
+#     - GET /campaigns          - List campaigns
+#
+#   Campaign Builder (directreach/v2):
+#     - GET  /campaigns/{id}                          - Get campaign details
+#     - GET  /campaigns/{id}/content-links            - List content links
+#     - GET  /campaigns/{id}/templates                - List email templates
+#     - POST /emails/generate                         - Generate email
+#     - POST /emails/track-copy                       - Track email copy event
+#
+# Auth:
+#   RTR Reading Room: WordPress cookie auth (current_user_can('edit_posts'))
+#   Campaign Builder: WordPress cookie auth (current_user_can('manage_options'))
+#   Legacy CPD API:   X-API-Key header (get_option('cpd_api_key'))
+#
+# For external (non-browser) access, use WordPress Application Passwords
+# with Basic Auth, which satisfies current_user_can() checks.
 # =============================================================================
 
 import logging
 from typing import Any
-from functools import lru_cache
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from config.settings import settings
 
@@ -31,49 +44,57 @@ logger = logging.getLogger(__name__)
 
 class Prospect(BaseModel):
     # Prospect data from rtr_prospects table
+    # Fields from rtr_prospects joined with cpd_visitors and dr_campaign_settings
     id: int
-    visitor_id: int
     campaign_id: int
-    current_room: str
-    lead_score: int
-    company_name: str | None = None
+    visitor_id: int
+    current_room: str = ""  # "problem", "solution", "offer"
+    company_name: str = ""
     contact_name: str | None = None
+    contact_email: str | None = None
+    lead_score: int = 0
+    days_in_room: int = 0
+    email_sequence_position: int = 0
+    engagement_data: str | None = None  # JSON string of recent page visits
+    # Joined from cpd_visitors
     job_title: str | None = None
     industry: str | None = None
     employee_count: str | None = None
-    email: str | None = None
+    # Joined from dr_campaign_settings
+    campaign_name: str | None = None
+    client_id: int | None = None
 
 
 class ContentLink(BaseModel):
     # Content asset from rtr_room_content_links table
+    # Returned by GET /campaigns/{id}/content-links
     id: int
     campaign_id: int
-    room: str
-    url: str
-    title: str
-    service_area: str | None = None
-    content_type: str | None = None
-    persona: str | None = None
-    industry: str | None = None
-    summary: str | None = None
+    room_type: str  # "problem", "solution", "offer"
+    link_title: str = ""
+    link_url: str = ""
+    url_summary: str = ""
+    link_description: str = ""
+    link_order: int = 0
+    is_active: bool = True
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class Campaign(BaseModel):
     # Campaign from dr_campaign_settings table
     id: int
-    client_id: int
-    name: str
-    utm_source: str | None = None
-    utm_medium: str | None = None
-    utm_campaign: str | None = None
-    active: bool = True
+    client_id: int = 0
+    campaign_name: str = ""
+    # Additional fields depend on enrich_campaign_data in the controller
 
 
 class EmailTemplate(BaseModel):
     # Email template from rtr_email_templates table
+    # Returned by GET /campaigns/{id}/templates
     id: int
-    campaign_id: int
-    room: str
+    campaign_id: int = 0
+    room_type: str = ""
     subject_prompt: str | None = None
     opener_prompt: str | None = None
     body_prompt: str | None = None
@@ -87,7 +108,7 @@ class EmailTemplate(BaseModel):
 
 class WordPressAPIError(Exception):
     # Raised when WordPress API request fails
-    
+
     def __init__(self, message: str, status_code: int | None = None):
         self.status_code = status_code
         super().__init__(message)
@@ -98,13 +119,20 @@ class WordPressAPIError(Exception):
 # =============================================================================
 
 class WordPressClient:
-    # Async client for DirectReach WordPress REST API
+    # Async client for the journey-os WordPress REST API
     #
     # Usage:
     #     async with WordPressClient() as wp:
     #         prospect = await wp.get_prospect(45)
-    #         content = await wp.get_content_links(campaign_id=1, room="problem")
-    
+    #         links = await wp.get_content_links(campaign_id=1)
+    #
+    # Auth uses WordPress Application Passwords (Basic Auth) which
+    # satisfies current_user_can() permission checks on the REST endpoints.
+
+    # API namespace prefixes
+    RTR_NS = "/wp-json/directreach/v1/reading-room"
+    CB_NS = "/wp-json/directreach/v2"
+
     def __init__(
         self,
         base_url: str | None = None,
@@ -115,25 +143,26 @@ class WordPressClient:
         self.api_key = api_key or settings.wordpress_api_key
         self.timeout = timeout or settings.api_timeout_seconds
         self._client: httpx.AsyncClient | None = None
-    
+
     async def __aenter__(self) -> "WordPressClient":
         # Enter async context manager
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             headers={
+                # X-API-Key for legacy CPD endpoints
                 "X-API-Key": self.api_key,
                 "Content-Type": "application/json",
             },
             timeout=self.timeout,
         )
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         # Exit async context manager
         if self._client:
             await self._client.aclose()
             self._client = None
-    
+
     @property
     def client(self) -> httpx.AsyncClient:
         # Get the HTTP client, raising if not in context
@@ -143,32 +172,33 @@ class WordPressClient:
                 "async with WordPressClient() as wp:"
             )
         return self._client
-    
+
     # -------------------------------------------------------------------------
-    # Prospects
+    # Prospects (RTR Reading Room namespace)
     # -------------------------------------------------------------------------
-    
+
     async def get_prospect(self, prospect_id: int) -> Prospect:
         # Fetch a single prospect by ID
-        #
-        # Args:
-        #     prospect_id: ID from rtr_prospects table
-        #
-        # Returns:
-        #     Prospect model with all fields
-        #
-        # Raises:
-        #     WordPressAPIError: If request fails or prospect not found
-        
-        endpoint = f"/wp-json/directreach/rtr/v1/prospects/{prospect_id}"
-        
+        # Endpoint: GET /directreach/v1/reading-room/prospects/{id}
+        # Response: { success: true, data: { ...prospect fields } }
+
+        endpoint = f"{self.RTR_NS}/prospects/{prospect_id}"
+
         logger.debug(f"Fetching prospect {prospect_id}")
-        
+
         try:
             response = await self.client.get(endpoint)
             response.raise_for_status()
             data = response.json()
-            return Prospect.model_validate(data.get("data", data))
+
+            if not data.get("success"):
+                raise WordPressAPIError(
+                    f"Prospect {prospect_id} not found",
+                    status_code=404,
+                )
+
+            return Prospect.model_validate(data["data"])
+
         except httpx.HTTPStatusError as e:
             logger.error(f"Failed to fetch prospect {prospect_id}: {e}")
             raise WordPressAPIError(
@@ -178,175 +208,218 @@ class WordPressClient:
         except httpx.RequestError as e:
             logger.error(f"Request failed for prospect {prospect_id}: {e}")
             raise WordPressAPIError(f"Request failed: {e}") from e
-    
+
     async def list_prospects(
         self,
-        campaign_id: int,
+        campaign_id: int | None = None,
+        client_id: int | None = None,
         room: str | None = None,
-        limit: int = 50,
+        page: int = 1,
+        per_page: int = 50,
     ) -> list[Prospect]:
-        # List prospects for a campaign, optionally filtered by room
-        #
-        # Args:
-        #     campaign_id: Filter by campaign
-        #     room: Optional room filter ("problem", "solution", "offer")
-        #     limit: Maximum results to return
-        #
-        # Returns:
-        #     List of Prospect models
-        
-        endpoint = "/wp-json/directreach/rtr/v1/prospects"
+        # List prospects, optionally filtered by campaign and room
+        # Endpoint: GET /directreach/v1/reading-room/prospects
+
+        endpoint = f"{self.RTR_NS}/prospects"
         params: dict[str, Any] = {
-            "campaign_id": campaign_id,
-            "per_page": limit,
+            "page": page,
+            "per_page": per_page,
         }
+        if campaign_id:
+            params["campaign_id"] = campaign_id
+        if client_id:
+            params["client_id"] = client_id
         if room:
             params["room"] = room
-        
-        logger.debug(f"Listing prospects for campaign {campaign_id}")
-        
+
+        logger.debug(
+            f"Listing prospects",
+            extra={"campaign_id": campaign_id, "room": room},
+        )
+
         try:
             response = await self.client.get(endpoint, params=params)
             response.raise_for_status()
             data = response.json()
-            items = data.get("data", data) if isinstance(data, dict) else data
+
+            # RTR controller returns { success, data: [...], meta: {...} }
+            items = data.get("data", [])
+            if isinstance(items, dict):
+                # Shouldn't happen for list, but handle gracefully
+                items = [items]
+
             return [Prospect.model_validate(p) for p in items]
+
         except httpx.HTTPError as e:
             logger.error(f"Failed to list prospects: {e}")
             raise WordPressAPIError(f"Failed to list prospects: {e}") from e
-    
+
     # -------------------------------------------------------------------------
-    # Content Links
+    # Content Links (Campaign Builder namespace)
     # -------------------------------------------------------------------------
-    
+
     async def get_content_links(
         self,
         campaign_id: int,
-        room: str | None = None,
-        service_area: str | None = None,
-    ) -> list[ContentLink]:
-        # Fetch content links for a campaign
-        #
-        # Args:
-        #     campaign_id: Filter by campaign
-        #     room: Optional room filter ("problem", "solution", "offer")
-        #     service_area: Optional service area filter
-        #
-        # Returns:
-        #     List of ContentLink models
-        
-        endpoint = "/wp-json/directreach/rtr/v1/content-links"
-        params: dict[str, Any] = {"campaign_id": campaign_id}
-        if room:
-            params["room"] = room
-        if service_area:
-            params["service_area"] = service_area
-        
+    ) -> dict[str, list[ContentLink]]:
+        # Fetch content links for a campaign, grouped by room
+        # Endpoint: GET /directreach/v2/campaigns/{id}/content-links
+        # Response: { success, data: { problem: [...], solution: [...], offer: [...] } }
+
+        endpoint = f"{self.CB_NS}/campaigns/{campaign_id}/content-links"
+
         logger.debug(f"Fetching content links for campaign {campaign_id}")
-        
-        try:
-            response = await self.client.get(endpoint, params=params)
-            response.raise_for_status()
-            data = response.json()
-            items = data.get("data", data) if isinstance(data, dict) else data
-            return [ContentLink.model_validate(c) for c in items]
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to fetch content links: {e}")
-            raise WordPressAPIError(f"Failed to fetch content links: {e}") from e
-    
-    # -------------------------------------------------------------------------
-    # Campaigns
-    # -------------------------------------------------------------------------
-    
-    async def get_campaign(self, campaign_id: int) -> Campaign:
-        # Fetch a campaign by ID
-        
-        endpoint = f"/wp-json/directreach/rtr/v1/campaigns/{campaign_id}"
-        
+
         try:
             response = await self.client.get(endpoint)
             response.raise_for_status()
             data = response.json()
-            return Campaign.model_validate(data.get("data", data))
+
+            if not data.get("success"):
+                raise WordPressAPIError(
+                    f"Failed to get content links for campaign {campaign_id}",
+                )
+
+            grouped = data.get("data", {})
+            result: dict[str, list[ContentLink]] = {}
+
+            for room_type in ("problem", "solution", "offer"):
+                room_links = grouped.get(room_type, [])
+                result[room_type] = [
+                    ContentLink.model_validate(link) for link in room_links
+                ]
+
+            return result
+
+        except httpx.HTTPError as e:
+            logger.error(f"Failed to fetch content links: {e}")
+            raise WordPressAPIError(f"Failed to fetch content links: {e}") from e
+
+    async def get_content_links_flat(
+        self,
+        campaign_id: int,
+        room: str | None = None,
+    ) -> list[ContentLink]:
+        # Fetch content links as a flat list, optionally filtered by room
+        # Convenience wrapper around get_content_links
+
+        grouped = await self.get_content_links(campaign_id)
+
+        if room:
+            return grouped.get(room, [])
+
+        # Flatten all rooms into a single list
+        flat: list[ContentLink] = []
+        for room_links in grouped.values():
+            flat.extend(room_links)
+        return flat
+
+    # -------------------------------------------------------------------------
+    # Campaigns (Campaign Builder namespace)
+    # -------------------------------------------------------------------------
+
+    async def get_campaign(self, campaign_id: int) -> Campaign:
+        # Fetch a campaign by ID
+        # Endpoint: GET /directreach/v2/campaigns/{id}
+
+        endpoint = f"{self.CB_NS}/campaigns/{campaign_id}"
+
+        try:
+            response = await self.client.get(endpoint)
+            response.raise_for_status()
+            data = response.json()
+
+            if not data.get("success"):
+                raise WordPressAPIError(f"Campaign {campaign_id} not found")
+
+            return Campaign.model_validate(data["data"])
+
         except httpx.HTTPError as e:
             logger.error(f"Failed to fetch campaign {campaign_id}: {e}")
             raise WordPressAPIError(f"Campaign {campaign_id} not found") from e
-    
+
     # -------------------------------------------------------------------------
-    # Email Templates
+    # Email Templates (Campaign Builder namespace)
     # -------------------------------------------------------------------------
-    
-    async def get_email_template(
+
+    async def get_email_templates(
         self,
         campaign_id: int,
-        room: str,
-    ) -> EmailTemplate | None:
-        # Fetch email template for a campaign and room
-        #
-        # Args:
-        #     campaign_id: Campaign ID
-        #     room: Room name ("problem", "solution", "offer")
-        #
-        # Returns:
-        #     EmailTemplate if found, None otherwise
-        
-        endpoint = "/wp-json/directreach/rtr/v1/email-templates"
-        params = {"campaign_id": campaign_id, "room": room}
-        
+    ) -> list[EmailTemplate]:
+        # Fetch email templates for a campaign
+        # Endpoint: GET /directreach/v2/campaigns/{id}/templates
+
+        endpoint = f"{self.CB_NS}/campaigns/{campaign_id}/templates"
+
         try:
-            response = await self.client.get(endpoint, params=params)
+            response = await self.client.get(endpoint)
             response.raise_for_status()
             data = response.json()
-            items = data.get("data", data) if isinstance(data, dict) else data
-            if items and len(items) > 0:
-                return EmailTemplate.model_validate(items[0])
-            return None
+
+            items = data.get("data", [])
+            if isinstance(items, dict):
+                items = [items]
+
+            return [EmailTemplate.model_validate(t) for t in items]
+
         except httpx.HTTPError as e:
-            logger.error(f"Failed to fetch email template: {e}")
-            return None
-    
+            logger.error(f"Failed to fetch email templates: {e}")
+            return []
+
     # -------------------------------------------------------------------------
-    # Email Tracking
+    # Email Tracking (Campaign Builder namespace)
     # -------------------------------------------------------------------------
-    
-    async def log_email_generation(
+
+    async def generate_email(
         self,
         prospect_id: int,
-        campaign_id: int,
-        content_link_id: int,
-        email_subject: str,
-        email_body: str,
-    ) -> int:
-        # Log a generated email to rtr_email_tracking
+        room_type: str,
+        email_number: int = 1,
+        force_regenerate: bool = False,
+    ) -> dict[str, Any]:
+        # Trigger email generation via the WordPress endpoint
+        # Endpoint: POST /directreach/v2/emails/generate
+        # This calls the PHP-side AI email generator
         #
-        # Returns:
-        #     ID of the created tracking record
-        
-        endpoint = "/wp-json/directreach/rtr/v1/email-tracking"
+        # For CIS-driven generation, use the LangGraph pipeline instead
+        # and log results via log_email_generation()
+
+        endpoint = f"{self.CB_NS}/emails/generate"
         payload = {
             "prospect_id": prospect_id,
-            "campaign_id": campaign_id,
-            "content_link_id": content_link_id,
-            "email_subject": email_subject,
-            "email_body": email_body,
-            "status": "generated",
+            "room_type": room_type,
+            "email_number": email_number,
+            "force_regenerate": force_regenerate,
         }
-        
+
         try:
             response = await self.client.post(endpoint, json=payload)
             response.raise_for_status()
-            data = response.json()
-            return data.get("id", data.get("data", {}).get("id", 0))
+            return response.json()
         except httpx.HTTPError as e:
-            logger.error(f"Failed to log email generation: {e}")
-            raise WordPressAPIError(f"Failed to log email: {e}") from e
+            logger.error(f"Failed to generate email: {e}")
+            raise WordPressAPIError(f"Failed to generate email: {e}") from e
 
+    async def track_email_copy(
+        self,
+        email_tracking_id: int,
+        prospect_id: int,
+        url_included: str = "",
+    ) -> dict[str, Any]:
+        # Track an email copy (mark as sent)
+        # Endpoint: POST /directreach/v2/emails/track-copy
 
-# =============================================================================
-# Factory
-# =============================================================================
+        endpoint = f"{self.CB_NS}/emails/track-copy"
+        payload = {
+            "email_tracking_id": email_tracking_id,
+            "prospect_id": prospect_id,
+            "url_included": url_included,
+        }
 
-@lru_cache
-def get_wordpress_client() -> WordPressClient:
-    # Get a WordPress client instance (for dependency injection)
-    return WordPressClient()
+        try:
+            response = await self.client.post(endpoint, json=payload)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error(f"Failed to track email copy: {e}")
+            raise WordPressAPIError(f"Failed to track email: {e}") from e
