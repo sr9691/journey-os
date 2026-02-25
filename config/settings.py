@@ -27,12 +27,23 @@ class Settings(BaseSettings):
     wordpress_base_url: str = "https://example.com"
     wordpress_api_key: str = ""
 
+    # WordPress Application Passwords (Phase 1+)
+    # Used for Basic Auth to satisfy current_user_can() on REST endpoints
+    # Create at: WordPress Admin > Users > Your Profile > Application Passwords
+    wordpress_app_user: str = ""
+    wordpress_app_password: str = ""
+
     # LLM API Keys
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
 
     # Timeouts
     api_timeout_seconds: int = 30
+
+    @property
+    def has_wordpress_auth(self) -> bool:
+        # Check if WordPress Application Password credentials are configured
+        return bool(self.wordpress_app_user and self.wordpress_app_password)
 
 
 @lru_cache

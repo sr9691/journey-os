@@ -126,8 +126,10 @@ class WordPressClient:
     #         prospect = await wp.get_prospect(45)
     #         links = await wp.get_content_links(campaign_id=1)
     #
-    # Auth uses WordPress Application Passwords (Basic Auth) which
-    # satisfies current_user_can() permission checks on the REST endpoints.
+    # Auth priority:
+    #   1. WordPress Application Passwords (Basic Auth) - for REST endpoints
+    #      using current_user_can() permission checks
+    #   2. X-API-Key header - for legacy CPD endpoints
 
     # API namespace prefixes
     RTR_NS = "/wp-json/directreach/v1/reading-room"
@@ -137,22 +139,54 @@ class WordPressClient:
         self,
         base_url: str | None = None,
         api_key: str | None = None,
+        app_user: str | None = None,
+        app_password: str | None = None,
         timeout: int | None = None,
     ):
         self.base_url = (base_url or settings.wordpress_base_url).rstrip("/")
         self.api_key = api_key or settings.wordpress_api_key
+        self.app_user = app_user or settings.wordpress_app_user
+        self.app_password = app_password or settings.wordpress_app_password
         self.timeout = timeout or settings.api_timeout_seconds
         self._client: httpx.AsyncClient | None = None
 
+    @property
+    def has_basic_auth(self) -> bool:
+        # Check if Application Password credentials are available
+        return bool(self.app_user and self.app_password)
+
     async def __aenter__(self) -> "WordPressClient":
         # Enter async context manager
+        # Uses Basic Auth (Application Passwords) when credentials are set,
+        # falls back to X-API-Key header for legacy endpoints
+
+        headers: dict[str, str] = {
+            "Content-Type": "application/json",
+        }
+
+        # Always include X-API-Key for legacy CPD endpoints
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
+
+        # Build auth for Application Passwords (Basic Auth)
+        auth = None
+        if self.has_basic_auth:
+            auth = httpx.BasicAuth(
+                username=self.app_user,
+                password=self.app_password,
+            )
+            logger.info("WordPress client using Basic Auth (Application Passwords)")
+        else:
+            logger.warning(
+                "WordPress client has no Application Password credentials. "
+                "REST endpoints using current_user_can() will fail. "
+                "Set WORDPRESS_APP_USER and WORDPRESS_APP_PASSWORD in .env"
+            )
+
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
-            headers={
-                # X-API-Key for legacy CPD endpoints
-                "X-API-Key": self.api_key,
-                "Content-Type": "application/json",
-            },
+            headers=headers,
+            auth=auth,
             timeout=self.timeout,
         )
         return self

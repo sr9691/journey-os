@@ -11,6 +11,8 @@
 # - Intent profile is extracted (Pydantic ProspectIntent)
 # - Assets are ranked (Pydantic RankedAsset list)
 # - Top recommendation is displayed
+#
+# Phase 1: Added WordPress fetch test
 # =============================================================================
 
 import asyncio
@@ -32,12 +34,12 @@ logger = logging.getLogger(__name__)
 
 
 def test_sync_execution() -> bool:
-    # Test synchronous graph execution
+    # Test synchronous graph execution with pre-provided data
     from models.state import create_initial_state, ProspectIntent, RankedAsset
     from graphs.email_generation import email_generation_graph
 
     print("\n" + "=" * 60)
-    print("TEST: Synchronous Graph Execution")
+    print("TEST: Synchronous Graph Execution (pre-provided data)")
     print("=" * 60)
 
     # Create initial state with test data
@@ -105,14 +107,25 @@ def test_sync_execution() -> bool:
 
 
 async def test_async_execution() -> bool:
-    # Test async workflow execution
+    # Test async workflow execution (uses mock data fallback)
     from graphs.email_generation import run_email_generation
 
     print("\n" + "=" * 60)
-    print("TEST: Async Workflow Execution")
+    print("TEST: Async Workflow Execution (auto-fetch or mock fallback)")
     print("=" * 60)
 
     result = await run_email_generation(prospect_id=99, campaign_id=2)
+
+    # Show what data source was used
+    prospect_data = result.get("prospect_data", {})
+    company = prospect_data.get("company_name", "Unknown")
+    room = prospect_data.get("current_room", "Unknown")
+    industry = prospect_data.get("industry", "Unknown")
+
+    print(f"\n  Data Source: {'WordPress' if company != 'Acme Health Systems' else 'Mock fallback'}")
+    print(f"  Company: {company}")
+    print(f"  Room: {room}")
+    print(f"  Industry: {industry}")
 
     selected = result.get("selected_content")
     if selected:
@@ -124,6 +137,71 @@ async def test_async_execution() -> bool:
     return False
 
 
+async def test_wordpress_fetch() -> bool:
+    # Test WordPress data fetching directly
+    # Only runs if WORDPRESS_APP_USER and WORDPRESS_APP_PASSWORD are set
+    from config.settings import settings
+
+    print("\n" + "=" * 60)
+    print("TEST: WordPress Data Fetch")
+    print("=" * 60)
+
+    if not settings.has_wordpress_auth:
+        print("\n  SKIPPED: No WordPress Application Password configured")
+        print("  Set WORDPRESS_APP_USER and WORDPRESS_APP_PASSWORD in .env")
+        print("=" * 60)
+        return True  # Not a failure, just skipped
+
+    print(f"\n  WordPress URL: {settings.wordpress_base_url}")
+    print(f"  Auth User: {settings.wordpress_app_user}")
+
+    try:
+        from services.wordpress_client import WordPressClient
+
+        async with WordPressClient() as wp:
+            # Try to list prospects first (less likely to fail with bad ID)
+            prospects = await wp.list_prospects(per_page=1)
+
+            if prospects:
+                prospect = prospects[0]
+                print(f"\n  Found prospect:")
+                print(f"    ID: {prospect.id}")
+                print(f"    Company: {prospect.company_name}")
+                print(f"    Room: {prospect.current_room}")
+                print(f"    Lead Score: {prospect.lead_score}")
+                print(f"    Industry: {prospect.industry}")
+                print(f"    Job Title: {prospect.job_title}")
+
+                # Now test the full workflow with this real prospect
+                print(f"\n  Running full workflow with prospect {prospect.id}...")
+                from graphs.email_generation import run_email_generation
+
+                result = await run_email_generation(
+                    prospect_id=prospect.id,
+                    campaign_id=prospect.campaign_id,
+                )
+
+                selected = result.get("selected_content")
+                if selected:
+                    print(f"  \u2713 Recommendation: {selected.title}")
+                elif result.get("error"):
+                    print(f"  \u2717 Error: {result['error']}")
+                else:
+                    print(f"  \u2713 Workflow completed (no content matched)")
+            else:
+                print("\n  No prospects found in WordPress")
+
+        print("\n" + "=" * 60)
+        print("\u2713 WordPress fetch test complete!")
+        print("=" * 60)
+        return True
+
+    except Exception as e:
+        print(f"\n\u2717 WordPress fetch failed: {e}")
+        print("=" * 60)
+        return False
+
+
 def main() -> int:
     # Run all tests
     print("\n" + "#" * 60)
@@ -131,21 +209,25 @@ def main() -> int:
     print("# Workflow Test Suite")
     print("#" * 60)
 
-    # Test 1: Sync execution
+    # Test 1: Sync execution with pre-provided data
     sync_ok = test_sync_execution()
 
-    # Test 2: Async execution
+    # Test 2: Async execution (auto-fetch or mock fallback)
     async_ok = asyncio.run(test_async_execution())
+
+    # Test 3: WordPress fetch (skipped if no auth configured)
+    wp_ok = asyncio.run(test_wordpress_fetch())
 
     # Summary
     print("\n" + "#" * 60)
     print("# Test Summary")
     print("#" * 60)
-    print(f"  Sync Execution:  {'\u2713 PASS' if sync_ok else '\u2717 FAIL'}")
-    print(f"  Async Execution: {'\u2713 PASS' if async_ok else '\u2717 FAIL'}")
+    print(f"  Sync Execution:   {'\u2713 PASS' if sync_ok else '\u2717 FAIL'}")
+    print(f"  Async Execution:  {'\u2713 PASS' if async_ok else '\u2717 FAIL'}")
+    print(f"  WordPress Fetch:  {'\u2713 PASS' if wp_ok else '\u2717 FAIL'}")
     print("#" * 60 + "\n")
 
-    return 0 if (sync_ok and async_ok) else 1
+    return 0 if (sync_ok and async_ok and wp_ok) else 1
 
 
 if __name__ == "__main__":
