@@ -9,14 +9,16 @@
 # 1. fetch_prospect_data - Fetch real prospect data from WordPress (or mock)
 # 2. analyze_intent - Extract intent signals from prospect data
 # 3. rank_assets - Score and rank content for the prospect
-# 4. inspect_guardrails - Check content against room-specific rules
-# 5. (Future: generate_email - Create personalized email with Gemini)
+# 4. compose_email - Generate personalized email with Gemini (or template)
+# 5. inspect_guardrails - Check content against room-specific rules
 #
 # Phase 1: Added real WordPress data fetching with fallback to mock.
 # Phase 2: rank_assets now fetches real content links from WordPress
 #           and applies weighted scoring. Falls back to mock data.
-# Phase 4: Added guardrail inspector node after rank_assets to validate
-#           content against room-specific RTR rules.
+# Phase 4: Added guardrail inspector node to validate content against
+#           room-specific RTR rules.
+# Phase 5: Added email composer node using Gemini API with template
+#           fallback. Generates room-appropriate outreach emails.
 # =============================================================================
 
 import logging
@@ -28,6 +30,7 @@ from config.settings import settings
 from models.state import AgentState
 from agents.matching.intent_summarizer import analyze_intent
 from agents.matching.asset_ranker import rank_assets
+from agents.generation.email_composer import compose_email
 from agents.quality.guardrail_inspector import inspect_guardrails
 
 logger = logging.getLogger(__name__)
@@ -157,6 +160,7 @@ def create_email_generation_graph() -> StateGraph:
     workflow.add_node("fetch_prospect_data", fetch_prospect_data)
     workflow.add_node("analyze_intent", analyze_intent)
     workflow.add_node("rank_assets", rank_assets)
+    workflow.add_node("compose_email", compose_email)
     workflow.add_node("inspect_guardrails", inspect_guardrails)
     workflow.add_node("handle_error", handle_error)
 
@@ -176,8 +180,9 @@ def create_email_generation_graph() -> StateGraph:
         },
     )
 
-    # rank_assets -> inspect_guardrails -> END
-    workflow.add_edge("rank_assets", "inspect_guardrails")
+    # rank_assets -> compose_email -> inspect_guardrails -> END
+    workflow.add_edge("rank_assets", "compose_email")
+    workflow.add_edge("compose_email", "inspect_guardrails")
     workflow.add_edge("inspect_guardrails", END)
     workflow.add_edge("handle_error", END)
 
@@ -211,7 +216,7 @@ async def run_email_generation(
     #                    to fetch from WordPress (or fall back to mock).
     #
     # Returns:
-    #     Final AgentState with ranked assets and recommendations
+    #     Final AgentState with ranked assets, generated email, and guardrail results
 
     from models.state import create_initial_state
 
@@ -230,7 +235,7 @@ async def run_email_generation(
         },
     )
 
-    # Run the graph — fetch_prospect_data will handle data retrieval
+    # Run the graph \u2014 fetch_prospect_data will handle data retrieval
     result = await email_generation_graph.ainvoke(initial_state)
 
     logger.info(
@@ -238,6 +243,7 @@ async def run_email_generation(
         extra={
             "prospect_id": prospect_id,
             "has_recommendations": len(result.get("ranked_assets", [])) > 0,
+            "has_email": result.get("generated_email") is not None,
             "error": result.get("error"),
         },
     )
