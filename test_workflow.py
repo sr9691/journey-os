@@ -18,6 +18,7 @@
 # Phase 3: Added Claude intent analysis verification
 # Phase 4: Added guardrail inspector verification
 # Phase 5: Added email composer verification + Gemini integration
+# Phase 6: Renamed to unit test suite (E2E tests in test_e2e.py)
 # =============================================================================
 
 import asyncio
@@ -680,7 +681,7 @@ async def run_all_tests() -> int:
     """Run all tests."""
     print("\n" + "#" * 60)
     print("# Content Intelligence System")
-    print("# Workflow Test Suite (Phase 5)")
+    print("# Unit Test Suite (Phase 6)")
     print("#" * 60)
 
     # Test 1: Graph execution with pre-provided data
