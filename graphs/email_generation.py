@@ -13,6 +13,8 @@
 # 5. (Future: generate_email - Create personalized email with Gemini)
 #
 # Phase 1: Added real WordPress data fetching with fallback to mock.
+# Phase 2: rank_assets now fetches real content links from WordPress
+#           and applies weighted scoring. Falls back to mock data.
 # =============================================================================
 
 import logging
