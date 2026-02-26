@@ -1,4 +1,4 @@
-# Content Intelligence System
+# JourneyOS
 
 AI agent orchestration system for B2B marketing automation using LangGraph.
 
