@@ -60,6 +60,8 @@ class Prospect(BaseModel):
     job_title: str | None = None
     industry: str | None = None
     employee_count: str | None = None
+    # Tracking - URLs already sent to this prospect
+    urls_sent: list[str] = Field(default_factory=list)
     # Joined from dr_campaign_settings
     campaign_name: str | None = None
     client_id: int | None = None
