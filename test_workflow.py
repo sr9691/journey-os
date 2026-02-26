@@ -14,6 +14,7 @@
 #
 # Phase 1: Added WordPress fetch test
 # Phase 2: Updated for async rank_assets, added scoring verification
+# Phase 3: Added Claude intent analysis verification
 # =============================================================================
 
 import asyncio
@@ -80,9 +81,16 @@ async def test_graph_execution() -> bool:
         print(f"\nIntent Profile (ProspectIntent):")
         print(f"  Service Area: {intent.service_area}")
         print(f"  Confidence: {intent.confidence:.0%}")
+        print(f"  Analysis Source: {intent.analysis_source}")
+        print(f"  Urgency Level: {intent.urgency_level}")
+        print(f"  Decision Stage: {intent.decision_stage}")
         print(f"  Pain Points:")
         for pp in intent.pain_points:
             print(f"    - {pp}")
+        if intent.key_questions:
+            print(f"  Key Questions:")
+            for q in intent.key_questions:
+                print(f"    - {q}")
 
     ranked = result.get("ranked_assets", [])
     print(f"\nRanked Assets: {len(ranked)} found")
@@ -93,15 +101,15 @@ async def test_graph_execution() -> bool:
 
     selected = result.get("selected_content")
     if selected:
-        print(f"\n✓ Top Recommendation: {selected.title}")
+        print(f"\n\u2713 Top Recommendation: {selected.title}")
 
     # Check for errors
     if result.get("error"):
-        print(f"\n✗ Error: {result['error']}")
+        print(f"\n\u2717 Error: {result['error']}")
         return False
 
     print("\n" + "=" * 60)
-    print("✓ Graph executed successfully!")
+    print("\u2713 Graph executed successfully!")
     print("=" * 60)
     return True
 
@@ -129,11 +137,11 @@ async def test_async_execution() -> bool:
 
     selected = result.get("selected_content")
     if selected:
-        print(f"\n✓ Async execution complete!")
+        print(f"\n\u2713 Async execution complete!")
         print(f"  Recommendation: {selected.title}")
         return True
 
-    print("\n✗ Async execution failed")
+    print("\n\u2717 Async execution failed")
     return False
 
 
@@ -194,23 +202,120 @@ async def test_wordpress_fetch() -> bool:
                     print(f"       Reasons: {', '.join(asset.match_reasons)}")
 
                 if selected:
-                    print(f"\n  ✓ Recommendation: {selected.title}")
+                    print(f"\n  \u2713 Recommendation: {selected.title}")
                 elif result.get("error"):
-                    print(f"  ✗ Error: {result['error']}")
+                    print(f"  \u2717 Error: {result['error']}")
                 else:
-                    print(f"  ✓ Workflow completed (no content matched)")
+                    print(f"  \u2713 Workflow completed (no content matched)")
             else:
                 print("\n  No prospects found in WordPress")
 
         print("\n" + "=" * 60)
-        print("✓ WordPress fetch test complete!")
+        print("\u2713 WordPress fetch test complete!")
         print("=" * 60)
         return True
 
     except Exception as e:
-        print(f"\n✗ WordPress fetch failed: {e}")
+        print(f"\n\u2717 WordPress fetch failed: {e}")
         print("=" * 60)
         return False
+
+
+async def test_intent_analysis() -> bool:
+    """Test intent analysis with rule-based fallback.
+    Verifies Phase 3 ProspectIntent fields are populated correctly.
+    Also tests Claude API path if ANTHROPIC_API_KEY is configured.
+    """
+    from config.settings import settings
+    from agents.matching.intent_summarizer import analyze_intent
+    from models.state import AgentState, ProspectIntent
+
+    print("\n" + "=" * 60)
+    print("TEST: Intent Analysis (Phase 3)")
+    print("=" * 60)
+
+    state = AgentState(
+        prospect_id=77,
+        prospect_data={
+            "id": 77,
+            "campaign_id": 1,
+            "current_room": "solution",
+            "lead_score": 60,
+            "company_name": "FinServ Global",
+            "contact_name": "James Chen",
+            "job_title": "CTO",
+            "industry": "Financial Services",
+            "employee_count": "5001-10000",
+            "days_in_room": 18,
+            "engagement_data": "/cloud-migration/assessment, /case-studies/banking",
+        },
+    )
+
+    print(f"\n  Prospect: {state['prospect_data']['company_name']}")
+    print(f"  Industry: {state['prospect_data']['industry']}")
+    print(f"  Lead Score: {state['prospect_data']['lead_score']}")
+    print(f"  Room: {state['prospect_data']['current_room']}")
+
+    result = await analyze_intent(state)
+    intent = result.get("intent_profile")
+
+    if not intent:
+        print("\n  \u2717 FAIL: No intent profile returned")
+        return False
+
+    passed = True
+
+    # Check analysis_source
+    if settings.has_anthropic_key:
+        print(f"\n  Analysis Source: {intent.analysis_source} (Claude API available)")
+    else:
+        print(f"\n  Analysis Source: {intent.analysis_source} (rule-based fallback)")
+        if intent.analysis_source != "rules":
+            print("  \u2717 FAIL: Expected 'rules' source without API key")
+            passed = False
+
+    # Verify Phase 3 fields are populated
+    print(f"  Service Area: {intent.service_area}")
+    if intent.service_area is None:
+        print("  \u2717 FAIL: service_area should not be None for this prospect")
+        passed = False
+
+    print(f"  Urgency Level: {intent.urgency_level}")
+    if intent.urgency_level is None:
+        print("  \u2717 FAIL: urgency_level should be populated")
+        passed = False
+    elif intent.analysis_source == "rules" and intent.urgency_level != "high":
+        print("  \u2717 FAIL: urgency should be 'high' for lead_score=60")
+        passed = False
+
+    print(f"  Decision Stage: {intent.decision_stage}")
+    if intent.decision_stage is None:
+        print("  \u2717 FAIL: decision_stage should be populated")
+        passed = False
+    elif intent.analysis_source == "rules" and intent.decision_stage != "consideration":
+        print("  \u2717 FAIL: stage should be 'consideration' for solution room")
+        passed = False
+
+    print(f"  Confidence: {intent.confidence:.0%}")
+    print(f"  Pain Points: {len(intent.pain_points)}")
+    for pp in intent.pain_points:
+        print(f"    - {pp}")
+
+    if intent.key_questions:
+        print(f"  Key Questions: {len(intent.key_questions)}")
+        for q in intent.key_questions:
+            print(f"    - {q}")
+
+    if passed:
+        print("\n" + "=" * 60)
+        print("\u2713 Intent analysis verified!")
+        print("=" * 60)
+    else:
+        print("\n" + "=" * 60)
+        print("\u2717 Intent analysis has issues")
+        print("=" * 60)
+
+    return passed
 
 
 async def test_scoring_logic() -> bool:
@@ -259,56 +364,56 @@ async def test_scoring_logic() -> bool:
 
     # Verify service_area match fires
     if "service_area" not in reasons:
-        print("  ✗ FAIL: service_area should match")
+        print("  \u2717 FAIL: service_area should match")
         passed = False
     else:
-        print("  ✓ service_area matched (+25)")
+        print("  \u2713 service_area matched (+25)")
 
     # Verify persona match (VP = executive, content has "strategy")
     persona = _get_persona("VP of Operations")
     if persona != "executive":
-        print(f"  ✗ FAIL: persona should be 'executive', got '{persona}'")
+        print(f"  \u2717 FAIL: persona should be 'executive', got '{persona}'")
         passed = False
     else:
-        print(f"  ✓ persona detected: {persona}")
+        print(f"  \u2713 persona detected: {persona}")
 
     if "persona" in reasons:
-        print("  ✓ persona matched (+20)")
+        print("  \u2713 persona matched (+20)")
     else:
-        print("  • persona did not match (content may lack executive keywords)")
+        print("  \u2022 persona did not match (content may lack executive keywords)")
 
     # Verify industry match
     if "industry" in reasons or "industry_partial" in reasons:
-        print("  ✓ industry matched")
+        print("  \u2713 industry matched")
     else:
-        print("  • industry did not match")
+        print("  \u2022 industry did not match")
 
     # Verify freshness
     freshness = _compute_freshness("2026-02-01T00:00:00")
     if freshness > 0:
-        print(f"  ✓ freshness score: {freshness}")
+        print(f"  \u2713 freshness score: {freshness}")
     else:
-        print("  • freshness score: 0 (content older than 90 days)")
+        print("  \u2022 freshness score: 0 (content older than 90 days)")
 
     # Verify score is reasonable (should be > 25 at minimum with service_area)
     if score >= 25:
-        print(f"\n  ✓ Score {score} is reasonable (>= 25 base)")
+        print(f"\n  \u2713 Score {score} is reasonable (>= 25 base)")
     else:
-        print(f"\n  ✗ FAIL: Score {score} is too low")
+        print(f"\n  \u2717 FAIL: Score {score} is too low")
         passed = False
 
     # Test already-sent URL filtering
     print(f"\n  Testing URL filtering:")
-    print(f"  ✓ Active link: is_active=True (included)")
-    print(f"  ✓ Dedup: urls_sent check implemented in rank_assets()")
+    print(f"  \u2713 Active link: is_active=True (included)")
+    print(f"  \u2713 Dedup: urls_sent check implemented in rank_assets()")
 
     if passed:
         print("\n" + "=" * 60)
-        print("✓ Scoring logic verified!")
+        print("\u2713 Scoring logic verified!")
         print("=" * 60)
     else:
         print("\n" + "=" * 60)
-        print("✗ Scoring logic has issues")
+        print("\u2717 Scoring logic has issues")
         print("=" * 60)
 
     return passed
@@ -318,7 +423,7 @@ async def run_all_tests() -> int:
     """Run all tests."""
     print("\n" + "#" * 60)
     print("# Content Intelligence System")
-    print("# Workflow Test Suite (Phase 2)")
+    print("# Workflow Test Suite (Phase 3)")
     print("#" * 60)
 
     # Test 1: Graph execution with pre-provided data
@@ -327,25 +432,30 @@ async def run_all_tests() -> int:
     # Test 2: Async workflow execution
     async_ok = await test_async_execution()
 
-    # Test 3: Scoring logic verification (no WordPress needed)
+    # Test 3: Intent analysis (Phase 3)
+    intent_ok = await test_intent_analysis()
+
+    # Test 4: Scoring logic verification (no WordPress needed)
     scoring_ok = await test_scoring_logic()
 
-    # Test 4: WordPress fetch (skipped if no auth configured)
+    # Test 5: WordPress fetch (skipped if no auth configured)
     wp_ok = await test_wordpress_fetch()
 
     # Summary
     print("\n" + "#" * 60)
     print("# Test Summary")
     print("#" * 60)
-    pass_mark = "✓ PASS"
-    fail_mark = "✗ FAIL"
-    print(f"  Graph Execution:  {pass_mark if graph_ok else fail_mark}")
-    print(f"  Async Execution:  {pass_mark if async_ok else fail_mark}")
-    print(f"  Scoring Logic:    {pass_mark if scoring_ok else fail_mark}")
-    print(f"  WordPress Fetch:  {pass_mark if wp_ok else fail_mark}")
+    pass_mark = "\u2713 PASS"
+    fail_mark = "\u2717 FAIL"
+    print(f"  Graph Execution:   {pass_mark if graph_ok else fail_mark}")
+    print(f"  Async Execution:   {pass_mark if async_ok else fail_mark}")
+    print(f"  Intent Analysis:   {pass_mark if intent_ok else fail_mark}")
+    print(f"  Scoring Logic:     {pass_mark if scoring_ok else fail_mark}")
+    print(f"  WordPress Fetch:   {pass_mark if wp_ok else fail_mark}")
     print("#" * 60 + "\n")
 
-    return 0 if (graph_ok and async_ok and scoring_ok and wp_ok) else 1
+    all_passed = graph_ok and async_ok and intent_ok and scoring_ok and wp_ok
+    return 0 if all_passed else 1
 
 
 def main() -> int:

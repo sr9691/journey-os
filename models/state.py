@@ -21,6 +21,9 @@ from pydantic import BaseModel, Field
 class ProspectIntent(BaseModel):
     # Intent profile extracted from prospect data
     # Populated by the intent_summarizer agent
+    #
+    # Phase 3: Expanded with urgency_level, decision_stage, key_questions,
+    # and analysis_source to track whether Claude or rules produced the intent.
 
     prospect_id: int = Field(..., description="ID from rtr_prospects table")
     service_area: str | None = Field(
@@ -36,6 +39,23 @@ class ProspectIntent(BaseModel):
         ge=0.0,
         le=1.0,
         description="Analysis confidence score",
+    )
+    # Phase 3 additions — populated by Claude API when available
+    urgency_level: str | None = Field(
+        default=None,
+        description="Prospect urgency: low, medium, high",
+    )
+    decision_stage: str | None = Field(
+        default=None,
+        description="Buying stage: awareness, consideration, decision",
+    )
+    key_questions: list[str] = Field(
+        default_factory=list,
+        description="Questions the prospect likely has based on their signals",
+    )
+    analysis_source: str = Field(
+        default="rules",
+        description="How intent was derived: 'claude' or 'rules'",
     )
 
 
