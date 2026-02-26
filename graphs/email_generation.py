@@ -9,12 +9,14 @@
 # 1. fetch_prospect_data - Fetch real prospect data from WordPress (or mock)
 # 2. analyze_intent - Extract intent signals from prospect data
 # 3. rank_assets - Score and rank content for the prospect
-# 4. (Future: guardrail_inspect - Check room compliance)
+# 4. inspect_guardrails - Check content against room-specific rules
 # 5. (Future: generate_email - Create personalized email with Gemini)
 #
 # Phase 1: Added real WordPress data fetching with fallback to mock.
 # Phase 2: rank_assets now fetches real content links from WordPress
 #           and applies weighted scoring. Falls back to mock data.
+# Phase 4: Added guardrail inspector node after rank_assets to validate
+#           content against room-specific RTR rules.
 # =============================================================================
 
 import logging
@@ -26,6 +28,7 @@ from config.settings import settings
 from models.state import AgentState
 from agents.matching.intent_summarizer import analyze_intent
 from agents.matching.asset_ranker import rank_assets
+from agents.quality.guardrail_inspector import inspect_guardrails
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +157,7 @@ def create_email_generation_graph() -> StateGraph:
     workflow.add_node("fetch_prospect_data", fetch_prospect_data)
     workflow.add_node("analyze_intent", analyze_intent)
     workflow.add_node("rank_assets", rank_assets)
+    workflow.add_node("inspect_guardrails", inspect_guardrails)
     workflow.add_node("handle_error", handle_error)
 
     # Set entry point - fetch data first
@@ -172,8 +176,9 @@ def create_email_generation_graph() -> StateGraph:
         },
     )
 
-    # Terminal edges
-    workflow.add_edge("rank_assets", END)
+    # rank_assets -> inspect_guardrails -> END
+    workflow.add_edge("rank_assets", "inspect_guardrails")
+    workflow.add_edge("inspect_guardrails", END)
     workflow.add_edge("handle_error", END)
 
     return workflow

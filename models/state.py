@@ -59,6 +59,37 @@ class ProspectIntent(BaseModel):
     )
 
 
+class GuardrailViolation(BaseModel):
+    # A single guardrail violation found in content
+    # Phase 4: Used by the Guardrail Inspector node
+
+    violation_type: str = Field(..., description="ViolationType enum value")
+    matched_text: str = Field(..., description="The text that triggered the violation")
+    context: str = Field(default="", description="Surrounding text for context")
+    severity: str = Field(
+        default="warning",
+        description="Severity: 'warning' or 'block'",
+    )
+
+
+class GuardrailResult(BaseModel):
+    # Result of guardrail inspection on content
+    # Phase 4: Populated by the guardrail_inspector agent
+
+    passed: bool = Field(default=True, description="Whether content passed all guardrails")
+    room: str = Field(..., description="Room the content was checked against")
+    violations: list[GuardrailViolation] = Field(
+        default_factory=list,
+        description="List of violations found",
+    )
+    violation_count: int = Field(default=0, description="Total number of violations")
+    checked_text: str = Field(default="", description="The text that was inspected")
+    suggestion: str = Field(
+        default="",
+        description="Human-readable summary of what needs fixing",
+    )
+
+
 class RankedAsset(BaseModel):
     # Content asset with relevance score
     # Populated by the asset_ranker agent
@@ -101,8 +132,8 @@ class AgentState(TypedDict, total=False):
     email_context: dict[str, Any] | None
     generated_email: str | None
 
-    # Quality control (future)
-    guardrail_result: dict[str, Any] | None
+    # Quality control - populated by guardrail_inspector (Phase 4)
+    guardrail_result: GuardrailResult | None
     revision_count: int
 
     # Control flow
