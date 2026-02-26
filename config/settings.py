@@ -40,10 +40,19 @@ class Settings(BaseSettings):
     # Timeouts
     api_timeout_seconds: int = 30
 
+    # LLM Settings (Phase 3+)
+    anthropic_model: str = "claude-sonnet-4-20250514"
+    anthropic_max_tokens: int = 1024
+
     @property
     def has_wordpress_auth(self) -> bool:
         # Check if WordPress Application Password credentials are configured
         return bool(self.wordpress_app_user and self.wordpress_app_password)
+
+    @property
+    def has_anthropic_key(self) -> bool:
+        # Check if Anthropic API key is configured
+        return bool(self.anthropic_api_key)
 
 
 @lru_cache
