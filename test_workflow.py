@@ -10,12 +10,14 @@
 # - Graph executes successfully
 # - Intent profile is extracted (Pydantic ProspectIntent)
 # - Assets are ranked (Pydantic RankedAsset list)
-# - Top recommendation is displayed
+# - Email is generated (template fallback or Gemini)
+# - Guardrails are inspected against the generated email
 #
 # Phase 1: Added WordPress fetch test
 # Phase 2: Updated for async rank_assets, added scoring verification
 # Phase 3: Added Claude intent analysis verification
 # Phase 4: Added guardrail inspector verification
+# Phase 5: Added email composer verification + Gemini integration
 # =============================================================================
 
 import asyncio
@@ -104,6 +106,16 @@ async def test_graph_execution() -> bool:
     if selected:
         print(f"\n\u2713 Top Recommendation: {selected.title}")
 
+    # Show generated email (Phase 5)
+    email = result.get("generated_email")
+    if email:
+        print(f"\nGenerated Email ({len(email)} chars):")
+        # Show first 200 chars
+        preview = email[:200] + "..." if len(email) > 200 else email
+        print(f"  {preview}")
+    else:
+        print(f"\nGenerated Email: None (no content selected)")
+
     # Show guardrail result (Phase 4)
     guardrail = result.get("guardrail_result")
     if guardrail:
@@ -148,9 +160,13 @@ async def test_async_execution() -> bool:
     print(f"  Industry: {industry}")
 
     selected = result.get("selected_content")
+    email = result.get("generated_email")
+
     if selected:
         print(f"\n\u2713 Async execution complete!")
         print(f"  Recommendation: {selected.title}")
+        if email:
+            print(f"  Email generated: {len(email)} chars")
         return True
 
     print("\n\u2717 Async execution failed")
@@ -368,7 +384,7 @@ async def test_guardrail_inspector() -> bool:
         for v in result.violations:
             print(f"    [{v.severity}] {v.violation_type}: \"{v.matched_text}\"")
 
-    # Test 3: Company mention in solution room (should pass — soft refs OK)
+    # Test 3: Company mention in solution room (should pass \u2014 soft refs OK)
     result = inspect_text(company_text, "solution")
     print(f"\n  Test 3: Company mentions in solution room")
     print(f"  Violations for company_mention: {sum(1 for v in result.violations if v.violation_type == 'company_mention')}")
@@ -440,6 +456,120 @@ async def test_guardrail_inspector() -> bool:
     else:
         print("\n" + "=" * 60)
         print("\u2717 Guardrail inspector has issues")
+        print("=" * 60)
+
+    return passed
+
+
+async def test_email_composer() -> bool:
+    """Test email composer with template fallback.
+    Verifies Phase 5 email generation for each room type.
+    Also tests Gemini API path if GEMINI_API_KEY is configured.
+    """
+    from config.settings import settings
+    from agents.generation.email_composer import compose_email_from_context
+
+    print("\n" + "=" * 60)
+    print("TEST: Email Composer (Phase 5)")
+    print("=" * 60)
+
+    passed = True
+
+    # Build test context
+    base_context = {
+        "contact_name": "Sarah Johnson",
+        "job_title": "VP of Operations",
+        "company_name": "Acme Health Systems",
+        "industry": "Healthcare",
+        "service_area": "data-analytics",
+        "pain_points": [
+            "Data silos preventing analytics adoption",
+            "Compliance concerns with cloud migration",
+        ],
+        "confidence": 0.75,
+        "urgency_level": "medium",
+        "decision_stage": "awareness",
+        "key_questions": [],
+        "content_title": "Breaking Down Data Silos in Healthcare",
+        "content_url": "https://example.com/blog/data-silos-healthcare",
+        "content_room": "problem",
+        "content_score": 45.0,
+    }
+
+    # Test 1: Problem room email
+    print(f"\n  Test 1: Problem room email")
+    email = compose_email_from_context(base_context, "problem")
+    print(f"  Length: {len(email)} chars")
+    if len(email) < 50:
+        print("  \u2717 FAIL: Email too short")
+        passed = False
+    else:
+        print(f"  Preview: {email[:120]}...")
+        print("  \u2713 Problem room email generated")
+
+    # Test 2: Solution room email
+    print(f"\n  Test 2: Solution room email")
+    solution_ctx = {**base_context, "decision_stage": "consideration"}
+    email = compose_email_from_context(solution_ctx, "solution")
+    print(f"  Length: {len(email)} chars")
+    if len(email) < 50:
+        print("  \u2717 FAIL: Email too short")
+        passed = False
+    else:
+        print(f"  Preview: {email[:120]}...")
+        print("  \u2713 Solution room email generated")
+
+    # Test 3: Offer room email
+    print(f"\n  Test 3: Offer room email")
+    offer_ctx = {**base_context, "decision_stage": "decision"}
+    email = compose_email_from_context(offer_ctx, "offer")
+    print(f"  Length: {len(email)} chars")
+    if len(email) < 50:
+        print("  \u2717 FAIL: Email too short")
+        passed = False
+    else:
+        print(f"  Preview: {email[:120]}...")
+        # Offer room should mention scheduling a call
+        if "call" in email.lower() or "schedule" in email.lower() or "discuss" in email.lower():
+            print("  \u2713 Offer room includes CTA")
+        else:
+            print("  \u2022 Note: Offer room email missing clear CTA")
+
+    # Test 4: Content reference included
+    print(f"\n  Test 4: Content reference in email")
+    email = compose_email_from_context(base_context, "problem")
+    if "Breaking Down Data Silos" in email or "data-silos-healthcare" in email:
+        print("  \u2713 Content asset referenced in email")
+    else:
+        print("  \u2717 FAIL: Email should reference the content asset")
+        passed = False
+
+    # Test 5: Verify all rooms produce different content
+    print(f"\n  Test 5: Room differentiation")
+    emails = {
+        room: compose_email_from_context(base_context, room)
+        for room in ["problem", "solution", "offer"]
+    }
+    if len(set(emails.values())) == 3:
+        print("  \u2713 All three rooms produce distinct emails")
+    else:
+        print("  \u2717 FAIL: Rooms should produce different emails")
+        passed = False
+
+    # Test 6: Gemini availability check
+    print(f"\n  Test 6: Gemini API status")
+    if settings.has_gemini_key:
+        print("  \u2713 GEMINI_API_KEY configured \u2014 Gemini path will be used in graph")
+    else:
+        print("  \u2022 GEMINI_API_KEY not set \u2014 template fallback will be used")
+
+    if passed:
+        print("\n" + "=" * 60)
+        print("\u2713 Email composer verified!")
+        print("=" * 60)
+    else:
+        print("\n" + "=" * 60)
+        print("\u2717 Email composer has issues")
         print("=" * 60)
 
     return passed
@@ -550,7 +680,7 @@ async def run_all_tests() -> int:
     """Run all tests."""
     print("\n" + "#" * 60)
     print("# Content Intelligence System")
-    print("# Workflow Test Suite (Phase 4)")
+    print("# Workflow Test Suite (Phase 5)")
     print("#" * 60)
 
     # Test 1: Graph execution with pre-provided data
@@ -565,10 +695,13 @@ async def run_all_tests() -> int:
     # Test 4: Guardrail inspector (Phase 4)
     guardrail_ok = await test_guardrail_inspector()
 
-    # Test 5: Scoring logic verification (no WordPress needed)
+    # Test 5: Email composer (Phase 5)
+    email_ok = await test_email_composer()
+
+    # Test 6: Scoring logic verification (no WordPress needed)
     scoring_ok = await test_scoring_logic()
 
-    # Test 6: WordPress fetch (skipped if no auth configured)
+    # Test 7: WordPress fetch (skipped if no auth configured)
     wp_ok = await test_wordpress_fetch()
 
     # Summary
@@ -581,11 +714,12 @@ async def run_all_tests() -> int:
     print(f"  Async Execution:    {pass_mark if async_ok else fail_mark}")
     print(f"  Intent Analysis:    {pass_mark if intent_ok else fail_mark}")
     print(f"  Guardrail Inspect:  {pass_mark if guardrail_ok else fail_mark}")
+    print(f"  Email Composer:     {pass_mark if email_ok else fail_mark}")
     print(f"  Scoring Logic:      {pass_mark if scoring_ok else fail_mark}")
     print(f"  WordPress Fetch:    {pass_mark if wp_ok else fail_mark}")
     print("#" * 60 + "\n")
 
-    all_passed = graph_ok and async_ok and intent_ok and guardrail_ok and scoring_ok and wp_ok
+    all_passed = graph_ok and async_ok and intent_ok and guardrail_ok and email_ok and scoring_ok and wp_ok
     return 0 if all_passed else 1
 
 
