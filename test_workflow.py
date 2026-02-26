@@ -15,6 +15,7 @@
 # Phase 1: Added WordPress fetch test
 # Phase 2: Updated for async rank_assets, added scoring verification
 # Phase 3: Added Claude intent analysis verification
+# Phase 4: Added guardrail inspector verification
 # =============================================================================
 
 import asyncio
@@ -102,6 +103,17 @@ async def test_graph_execution() -> bool:
     selected = result.get("selected_content")
     if selected:
         print(f"\n\u2713 Top Recommendation: {selected.title}")
+
+    # Show guardrail result (Phase 4)
+    guardrail = result.get("guardrail_result")
+    if guardrail:
+        status = "\u2713 PASSED" if guardrail.passed else "\u2717 FAILED"
+        print(f"\nGuardrail Inspection: {status}")
+        print(f"  Room: {guardrail.room}")
+        print(f"  Violations: {guardrail.violation_count}")
+        if guardrail.violations:
+            for v in guardrail.violations:
+                print(f"    [{v.severity}] {v.violation_type}: \"{v.matched_text}\"")
 
     # Check for errors
     if result.get("error"):
@@ -318,6 +330,121 @@ async def test_intent_analysis() -> bool:
     return passed
 
 
+async def test_guardrail_inspector() -> bool:
+    """Test guardrail inspector with known violating and clean content.
+    Verifies Phase 4 room-specific rule enforcement.
+    """
+    from agents.quality.guardrail_inspector import inspect_text
+
+    print("\n" + "=" * 60)
+    print("TEST: Guardrail Inspector (Phase 4)")
+    print("=" * 60)
+
+    passed = True
+
+    # Test 1: Clean problem-room content (should pass)
+    clean_text = "Many organizations face data silos that prevent meaningful analytics adoption."
+    result = inspect_text(clean_text, "problem")
+    print(f"\n  Test 1: Clean problem-room text")
+    print(f"  Passed: {result.passed} | Violations: {result.violation_count}")
+    if not result.passed:
+        print("  \u2717 FAIL: Clean text should pass problem room")
+        for v in result.violations:
+            print(f"    [{v.severity}] {v.violation_type}: \"{v.matched_text}\"")
+        passed = False
+    else:
+        print("  \u2713 Clean text passes problem room")
+
+    # Test 2: Company mention in problem room (should fail)
+    company_text = "We can help you solve your data challenges. Our team specializes in analytics."
+    result = inspect_text(company_text, "problem")
+    print(f"\n  Test 2: Company mentions in problem room")
+    print(f"  Passed: {result.passed} | Violations: {result.violation_count}")
+    if result.passed:
+        print("  \u2717 FAIL: Company mentions should violate problem room")
+        passed = False
+    else:
+        print(f"  \u2713 Caught {result.violation_count} violation(s)")
+        for v in result.violations:
+            print(f"    [{v.severity}] {v.violation_type}: \"{v.matched_text}\"")
+
+    # Test 3: Company mention in solution room (should pass — soft refs OK)
+    result = inspect_text(company_text, "solution")
+    print(f"\n  Test 3: Company mentions in solution room")
+    print(f"  Violations for company_mention: {sum(1 for v in result.violations if v.violation_type == 'company_mention')}")
+    company_violations = [v for v in result.violations if v.violation_type == "company_mention"]
+    if company_violations:
+        print("  \u2717 FAIL: Company mentions should be allowed in solution room")
+        passed = False
+    else:
+        print("  \u2713 Company mentions allowed in solution room")
+
+    # Test 4: Pricing language in problem room (should fail)
+    pricing_text = "Our costs start at $500 per month for the basic tier."
+    result = inspect_text(pricing_text, "problem")
+    print(f"\n  Test 4: Pricing in problem room")
+    print(f"  Passed: {result.passed} | Violations: {result.violation_count}")
+    if result.passed:
+        print("  \u2717 FAIL: Pricing should violate problem room")
+        passed = False
+    else:
+        print(f"  \u2713 Caught {result.violation_count} violation(s)")
+
+    # Test 5: Pricing in offer room (should pass)
+    result = inspect_text(pricing_text, "offer")
+    pricing_violations = [v for v in result.violations if v.violation_type == "pricing_language"]
+    print(f"\n  Test 5: Pricing in offer room")
+    if pricing_violations:
+        print("  \u2717 FAIL: Pricing should be allowed in offer room")
+        passed = False
+    else:
+        print("  \u2713 Pricing allowed in offer room")
+
+    # Test 6: Superlatives (blocked in ALL rooms)
+    superlative_text = "We are the best and industry-leading provider."
+    for room in ["problem", "solution", "offer"]:
+        result = inspect_text(superlative_text, room)
+        sup_violations = [v for v in result.violations if v.violation_type == "superlative"]
+        if not sup_violations:
+            print(f"\n  \u2717 FAIL: Superlatives should be caught in {room} room")
+            passed = False
+    print(f"\n  Test 6: Superlatives blocked in all rooms")
+    print("  \u2713 Superlatives caught in problem, solution, and offer rooms")
+
+    # Test 7: Aggressive sales (blocked in ALL rooms)
+    aggressive_text = "Don't miss this limited time offer! Act now, only 5 spots left!"
+    result = inspect_text(aggressive_text, "offer")
+    agg_violations = [v for v in result.violations if v.violation_type == "aggressive_sales"]
+    print(f"\n  Test 7: Aggressive sales in offer room")
+    if not agg_violations:
+        print("  \u2717 FAIL: Aggressive sales should be caught even in offer room")
+        passed = False
+    else:
+        print(f"  \u2713 Caught {len(agg_violations)} aggressive sales violation(s)")
+        for v in agg_violations:
+            print(f"    [block] \"{v.matched_text}\"")
+
+    # Test 8: Verify suggestion text is generated
+    print(f"\n  Test 8: Suggestion generation")
+    result = inspect_text(company_text, "problem")
+    if result.suggestion and "violation" in result.suggestion.lower():
+        print(f"  \u2713 Suggestion generated: {result.suggestion.split(chr(10))[0]}")
+    else:
+        print("  \u2717 FAIL: No suggestion generated for violations")
+        passed = False
+
+    if passed:
+        print("\n" + "=" * 60)
+        print("\u2713 Guardrail inspector verified!")
+        print("=" * 60)
+    else:
+        print("\n" + "=" * 60)
+        print("\u2717 Guardrail inspector has issues")
+        print("=" * 60)
+
+    return passed
+
+
 async def test_scoring_logic() -> bool:
     """Test the scoring algorithm with synthetic content links.
     Verifies weighted scoring, filtering, and url deduplication.
@@ -423,7 +550,7 @@ async def run_all_tests() -> int:
     """Run all tests."""
     print("\n" + "#" * 60)
     print("# Content Intelligence System")
-    print("# Workflow Test Suite (Phase 3)")
+    print("# Workflow Test Suite (Phase 4)")
     print("#" * 60)
 
     # Test 1: Graph execution with pre-provided data
@@ -435,10 +562,13 @@ async def run_all_tests() -> int:
     # Test 3: Intent analysis (Phase 3)
     intent_ok = await test_intent_analysis()
 
-    # Test 4: Scoring logic verification (no WordPress needed)
+    # Test 4: Guardrail inspector (Phase 4)
+    guardrail_ok = await test_guardrail_inspector()
+
+    # Test 5: Scoring logic verification (no WordPress needed)
     scoring_ok = await test_scoring_logic()
 
-    # Test 5: WordPress fetch (skipped if no auth configured)
+    # Test 6: WordPress fetch (skipped if no auth configured)
     wp_ok = await test_wordpress_fetch()
 
     # Summary
@@ -447,14 +577,15 @@ async def run_all_tests() -> int:
     print("#" * 60)
     pass_mark = "\u2713 PASS"
     fail_mark = "\u2717 FAIL"
-    print(f"  Graph Execution:   {pass_mark if graph_ok else fail_mark}")
-    print(f"  Async Execution:   {pass_mark if async_ok else fail_mark}")
-    print(f"  Intent Analysis:   {pass_mark if intent_ok else fail_mark}")
-    print(f"  Scoring Logic:     {pass_mark if scoring_ok else fail_mark}")
-    print(f"  WordPress Fetch:   {pass_mark if wp_ok else fail_mark}")
+    print(f"  Graph Execution:    {pass_mark if graph_ok else fail_mark}")
+    print(f"  Async Execution:    {pass_mark if async_ok else fail_mark}")
+    print(f"  Intent Analysis:    {pass_mark if intent_ok else fail_mark}")
+    print(f"  Guardrail Inspect:  {pass_mark if guardrail_ok else fail_mark}")
+    print(f"  Scoring Logic:      {pass_mark if scoring_ok else fail_mark}")
+    print(f"  WordPress Fetch:    {pass_mark if wp_ok else fail_mark}")
     print("#" * 60 + "\n")
 
-    all_passed = graph_ok and async_ok and intent_ok and scoring_ok and wp_ok
+    all_passed = graph_ok and async_ok and intent_ok and guardrail_ok and scoring_ok and wp_ok
     return 0 if all_passed else 1
 
 
