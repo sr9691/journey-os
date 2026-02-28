@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.0-flash"
     gemini_max_tokens: int = 2048
 
+    # JourneyOS Webhook Auth (Phase 6)
+    journeyos_api_key: str = ""
+
     @property
     def has_wordpress_auth(self) -> bool:
         # Check if WordPress Application Password credentials are configured
