@@ -249,16 +249,17 @@ def _compose_with_template(
     primary_pain = pain_points[0] if pain_points else "operational challenges"
 
     if room == "problem":
+        # Problem room: strictly third-person, no "we/our" language
         return (
             f"I've been researching trends in the {industry.lower()} space and "
             f"noticed that many organizations like {company} are grappling with "
             f"{primary_pain.lower()}.\n\n"
             f"I came across this resource that explores this challenge in depth: "
             f'"{ content_title}"\n{content_url}\n\n'
-            f"It covers some of the patterns we're seeing across the industry "
+            f"It covers some of the patterns emerging across the industry "
             f"and the real cost of leaving these issues unaddressed.\n\n"
             f"Thought it might be relevant given your role. Would love to hear "
-            f"your perspective on how this resonates with what you're seeing at {company}."
+            f"your perspective on how this resonates with what you've noticed at {company}."
         )
     elif room == "solution":
         return (
