@@ -385,7 +385,7 @@ async def test_guardrail_inspector() -> bool:
         for v in result.violations:
             print(f"    [{v.severity}] {v.violation_type}: \"{v.matched_text}\"")
 
-    # Test 3: Company mention in solution room (should pass \u2014 soft refs OK)
+    # Test 3: Company mention in solution room (should pass — soft refs OK)
     result = inspect_text(company_text, "solution")
     print(f"\n  Test 3: Company mentions in solution room")
     print(f"  Violations for company_mention: {sum(1 for v in result.violations if v.violation_type == 'company_mention')}")
@@ -581,89 +581,124 @@ async def test_scoring_logic() -> bool:
     Verifies weighted scoring, filtering, and url deduplication.
     """
     from agents.matching.asset_ranker import (
-        _compute_score,
-        _get_persona,
-        _compute_freshness,
+        _score_real_assets,
+        _get_persona_category,
+        _is_fresh,
+        _matches_service_area,
+        _get_searchable_text,
+        SCORING_WEIGHTS,
+        BASE_ROOM_MATCH_SCORE,
     )
-    from services.wordpress_client import ContentLink
 
     print("\n" + "=" * 60)
     print("TEST: Scoring Logic Verification")
     print("=" * 60)
 
-    # Create a synthetic content link
-    link = ContentLink(
-        id=999,
-        campaign_id=1,
-        room_type="problem",
-        link_title="Is Your Data Center Draining Your Cloud Migration Budget?",
-        link_url="https://example.com/blog/cloud-migration-cost",
-        url_summary="How legacy data centers cost enterprises millions in hidden fees",
-        link_description="A deep dive into cloud migration strategy for healthcare enterprises",
-        link_order=1,
-        is_active=True,
-        created_at="2026-02-01T00:00:00",
-    )
+    # Create a synthetic content link as a dict (same shape as model_dump())
+    link = {
+        "id": 999,
+        "campaign_id": 1,
+        "room_type": "problem",
+        "link_title": "Is Your Data Center Draining Your Cloud Migration Budget?",
+        "link_url": "https://example.com/blog/cloud-migration-cost",
+        "url_summary": "How legacy data centers cost enterprises millions in hidden fees",
+        "link_description": "A deep dive into cloud migration strategy for healthcare enterprises",
+        "link_order": 1,
+        "is_active": True,
+        "created_at": "2026-02-01 00:00:00",
+    }
 
     prospect_data = {
         "job_title": "VP of Operations",
         "industry": "Healthcare",
+        "current_room": "problem",
         "engagement_data": "",
     }
 
-    # Test scoring for cloud-migration service area
-    score, reasons = _compute_score(link, "cloud-migration", prospect_data)
-    print(f"\n  Link: {link.link_title}")
-    print(f"  Service Area: cloud-migration")
-    print(f"  Score: {score}")
-    print(f"  Reasons: {reasons}")
-
     passed = True
 
-    # Verify service_area match fires
-    if "service_area" not in reasons:
+    # Test service area matching
+    searchable = _get_searchable_text(link)
+    sa_match = _matches_service_area(searchable, "cloud-migration")
+    print(f"\n  Link: {link['link_title']}")
+    print(f"  Service Area: cloud-migration")
+    print(f"  Service area match: {sa_match}")
+    if not sa_match:
         print("  \u2717 FAIL: service_area should match")
         passed = False
     else:
-        print("  \u2713 service_area matched (+25)")
+        print(f"  \u2713 service_area matched (+{SCORING_WEIGHTS['service_area']})")
 
-    # Verify persona match (VP = executive, content has "strategy")
-    persona = _get_persona("VP of Operations")
+    # Test persona detection
+    persona = _get_persona_category("VP of Operations")
     if persona != "executive":
         print(f"  \u2717 FAIL: persona should be 'executive', got '{persona}'")
         passed = False
     else:
         print(f"  \u2713 persona detected: {persona}")
 
-    if "persona" in reasons:
-        print("  \u2713 persona matched (+20)")
+    # Test freshness
+    fresh = _is_fresh(link)
+    if fresh:
+        print(f"  \u2713 freshness: content is fresh (+{SCORING_WEIGHTS['freshness']})")
     else:
-        print("  \u2022 persona did not match (content may lack executive keywords)")
+        print("  \u2022 freshness: content older than 90 days")
 
-    # Verify industry match
-    if "industry" in reasons or "industry_partial" in reasons:
-        print("  \u2713 industry matched")
-    else:
-        print("  \u2022 industry did not match")
+    # Test full scoring via _score_real_assets
+    scored = _score_real_assets(
+        content_links=[link],
+        room="problem",
+        service_area="cloud-migration",
+        prospect_data=prospect_data,
+        urls_sent=set(),
+    )
 
-    # Verify freshness
-    freshness = _compute_freshness("2026-02-01T00:00:00")
-    if freshness > 0:
-        print(f"  \u2713 freshness score: {freshness}")
+    if not scored:
+        print("\n  \u2717 FAIL: No scored assets returned")
+        passed = False
     else:
-        print("  \u2022 freshness score: 0 (content older than 90 days)")
+        asset = scored[0]
+        print(f"\n  Full score: {asset.score}")
+        print(f"  Match reasons: {asset.match_reasons}")
 
-    # Verify score is reasonable (should be > 25 at minimum with service_area)
-    if score >= 25:
-        print(f"\n  \u2713 Score {score} is reasonable (>= 25 base)")
+        # Should be at least BASE_ROOM_MATCH + service_area
+        min_expected = BASE_ROOM_MATCH_SCORE + SCORING_WEIGHTS["service_area"]
+        if asset.score >= min_expected:
+            print(f"  \u2713 Score {asset.score} >= {min_expected} (room + service_area)")
+        else:
+            print(f"  \u2717 FAIL: Score {asset.score} < {min_expected}")
+            passed = False
+
+    # Test URL dedup filtering
+    scored_with_dedup = _score_real_assets(
+        content_links=[link],
+        room="problem",
+        service_area="cloud-migration",
+        prospect_data=prospect_data,
+        urls_sent={"https://example.com/blog/cloud-migration-cost"},
+    )
+    print(f"\n  URL dedup test:")
+    if len(scored_with_dedup) == 0:
+        print("  \u2713 Already-sent URL correctly filtered out")
     else:
-        print(f"\n  \u2717 FAIL: Score {score} is too low")
+        print("  \u2717 FAIL: Already-sent URL should be excluded")
         passed = False
 
-    # Test already-sent URL filtering
-    print(f"\n  Testing URL filtering:")
-    print(f"  \u2713 Active link: is_active=True (included)")
-    print(f"  \u2713 Dedup: urls_sent check implemented in rank_assets()")
+    # Test inactive link filtering
+    inactive_link = {**link, "is_active": False}
+    scored_inactive = _score_real_assets(
+        content_links=[inactive_link],
+        room="problem",
+        service_area="cloud-migration",
+        prospect_data=prospect_data,
+        urls_sent=set(),
+    )
+    print(f"\n  Inactive filter test:")
+    if len(scored_inactive) == 0:
+        print("  \u2713 Inactive link correctly filtered out")
+    else:
+        print("  \u2717 FAIL: Inactive link should be excluded")
+        passed = False
 
     if passed:
         print("\n" + "=" * 60)
