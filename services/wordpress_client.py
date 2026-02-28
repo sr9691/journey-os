@@ -56,12 +56,11 @@ class Prospect(BaseModel):
     days_in_room: int = 0
     email_sequence_position: int = 0
     engagement_data: str | None = None  # JSON string of recent page visits
+    urls_sent: list[str] | str | None = None  # JSON array of sent content URLs
     # Joined from cpd_visitors
     job_title: str | None = None
     industry: str | None = None
     employee_count: str | None = None
-    # Tracking - URLs already sent to this prospect
-    urls_sent: list[str] = Field(default_factory=list)
     # Joined from dr_campaign_settings
     campaign_name: str | None = None
     client_id: int | None = None
@@ -230,7 +229,6 @@ class WordPressClient:
             if not data.get("success"):
                 raise WordPressAPIError(
                     f"Prospect {prospect_id} not found",
-                    status_code=404,
                 )
 
             return Prospect.model_validate(data["data"])
