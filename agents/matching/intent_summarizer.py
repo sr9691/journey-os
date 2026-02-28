@@ -54,8 +54,8 @@ async def analyze_intent(state: AgentState) -> dict[str, Any]:
     Reads: prospect_id, prospect_data
     Returns: intent_profile
 
-    Uses Claude API when ANTHROPIC_API_KEY is configured.
-    Falls back to rule-based extraction otherwise.
+    Phase 3: Uses Gemini API for richer prospect understanding when available.
+    Falls back to rule-based extraction when Gemini is unavailable.
     """
 
     prospect_id = state["prospect_id"]
@@ -79,6 +79,9 @@ async def analyze_intent(state: AgentState) -> dict[str, Any]:
     if settings.has_anthropic_key:
         intent_profile = await _analyze_with_claude(prospect_id, prospect_data)
 
+    if settings.has_gemini_key:
+        intent_profile = await _analyze_with_gemini(prospect_id, prospect_data)    
+    
     if intent_profile is None:
         intent_profile = _analyze_with_rules(prospect_id, prospect_data)
 
@@ -187,6 +190,95 @@ def _build_claude_prompt(prospect_data: dict[str, Any]) -> str:
 
     return "\n".join(parts)
 
+
+# =============================================================================
+# Gemini API Analysis (Phase 3)
+# =============================================================================
+
+async def _analyze_with_gemini(
+    prospect_id: int,
+    prospect_data: dict[str, Any],
+) -> ProspectIntent | None:
+    # Use Gemini API for rich intent analysis. Returns None on failure.
+
+    try:
+        from services.llm_client import GeminiClient, LLMClientError
+
+        # Build the user message with prospect signals
+        user_message = _build_analysis_prompt(prospect_data)
+
+        async with GeminiClient() as gemini:
+            result = await gemini.complete_json(
+                system=INTENT_SYSTEM_PROMPT,
+                user_message=user_message,
+            )
+
+        # Validate and build ProspectIntent from Gemini's response
+        intent = ProspectIntent(
+            prospect_id=prospect_id,
+            service_area=result.get("service_area"),
+            pain_points=result.get("pain_points", []),
+            confidence=min(1.0, max(0.0, float(result.get("confidence", 0.5)))),
+            urgency_level=result.get("urgency_level"),
+            decision_stage=result.get("decision_stage"),
+            key_questions=result.get("key_questions", []),
+            analysis_source="gemini",
+        )
+
+        logger.info(
+            "Gemini intent analysis succeeded",
+            extra={"prospect_id": prospect_id},
+        )
+        return intent
+
+    except LLMClientError as e:
+        logger.warning(
+            f"Gemini intent analysis failed, falling back to rules: {e}",
+            extra={"prospect_id": prospect_id, "provider": e.provider},
+        )
+        return None
+    except Exception as e:
+        logger.warning(
+            f"Unexpected error in Gemini analysis, falling back to rules: {e}",
+            extra={"prospect_id": prospect_id},
+        )
+        return None
+
+
+def _build_analysis_prompt(prospect_data: dict[str, Any]) -> str:
+    # Assemble prospect signals into a structured prompt for Gemini.
+
+    parts = ["Analyze this B2B prospect and determine their intent:\n"]
+
+    # Firmographics
+    if prospect_data.get("company_name"):
+        parts.append(f"Company: {prospect_data['company_name']}")
+    if prospect_data.get("industry"):
+        parts.append(f"Industry: {prospect_data['industry']}")
+    if prospect_data.get("employee_count"):
+        parts.append(f"Company Size: {prospect_data['employee_count']}")
+
+    # Contact info
+    if prospect_data.get("contact_name"):
+        parts.append(f"Contact: {prospect_data['contact_name']}")
+    if prospect_data.get("job_title"):
+        parts.append(f"Title: {prospect_data['job_title']}")
+
+    # RTR signals
+    if prospect_data.get("current_room"):
+        parts.append(f"Current Room: {prospect_data['current_room']}")
+    if prospect_data.get("lead_score") is not None:
+        parts.append(f"Lead Score: {prospect_data['lead_score']}")
+    if prospect_data.get("days_in_room"):
+        parts.append(f"Days in Room: {prospect_data['days_in_room']}")
+    if prospect_data.get("email_sequence_position"):
+        parts.append(f"Email Sequence Position: {prospect_data['email_sequence_position']}")
+
+    # Engagement data
+    if prospect_data.get("engagement_data"):
+        parts.append(f"Recent Page Visits: {prospect_data['engagement_data']}")
+
+    return "\n".join(parts)
 
 # =============================================================================
 # Rule-Based Analysis (fallback)

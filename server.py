@@ -6,11 +6,12 @@
 # and receive results. This is the CIS entry point for production use.
 #
 # Endpoints:
+#   POST /process-prospect        - Trigger email generation (client_id + prospect_id)
 #   POST /webhook/generate-email  - Trigger email generation for a prospect
 #   POST /webhook/batch-generate  - Trigger batch email generation
 #   GET  /health                  - Health check
 #   GET  /health/ready            - Readiness check (validates API keys)
-#
+# 
 # WordPress Integration:
 #   The WordPress plugin sends a POST to /webhook/generate-email when a
 #   prospect enters a new room or needs a fresh email. The CIS runs the
@@ -114,6 +115,18 @@ class HealthResponse(BaseModel):
     wordpress_configured: bool = False
     anthropic_configured: bool = False
     gemini_configured: bool = False
+
+
+class ProcessProspectRequest(BaseModel):
+    # Request body for the RTR/nightly sync trigger endpoint.
+
+    client_id: int = Field(..., description="Client ID from cpd_clients table")
+    prospect_id: int = Field(..., description="ID from rtr_prospects table")
+    callback_url: str | None = Field(
+        default=None,
+        description="WordPress endpoint to POST results back to. "
+        "If None, results are returned synchronously.",
+    )
 
 
 # =============================================================================
@@ -261,6 +274,95 @@ async def batch_generate(
         total=len(request.prospects),
         queued=len(request.prospects),
         message=f"Queued {len(request.prospects)} prospect(s) for email generation.",
+    )
+
+
+@app.post("/process-prospect", response_model=GenerateEmailResponse)
+async def process_prospect(
+    request: ProcessProspectRequest,
+    background_tasks: BackgroundTasks,
+    x_api_key: str | None = Header(default=None),
+) -> GenerateEmailResponse:
+    # Trigger email generation for a prospect using client_id + prospect_id.
+    #
+    # This is the primary entry point for RTR and nightly sync.
+    # Fetches prospect from WordPress to resolve campaign_id automatically.
+
+    _verify_api_key(x_api_key)
+
+    logger.info(
+        "Process prospect request received",
+        extra={
+            "client_id": request.client_id,
+            "prospect_id": request.prospect_id,
+            "has_callback": request.callback_url is not None,
+        },
+    )
+
+    # Fetch prospect from WordPress to get campaign_id
+    campaign_id = None
+    prospect_data = None
+
+    if settings.has_wordpress_auth:
+        try:
+            from services.wordpress_client import WordPressClient
+
+            async with WordPressClient() as wp:
+                prospect = await wp.get_prospect(request.prospect_id)
+
+            prospect_data = prospect.model_dump()
+            campaign_id = prospect.campaign_id
+
+            logger.info(
+                "Resolved campaign_id from prospect",
+                extra={
+                    "prospect_id": request.prospect_id,
+                    "campaign_id": campaign_id,
+                    "client_id": request.client_id,
+                },
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Failed to fetch prospect {request.prospect_id}: {e}",
+                extra={"client_id": request.client_id},
+            )
+            return GenerateEmailResponse(
+                success=False,
+                prospect_id=request.prospect_id,
+                campaign_id=0,
+                error=f"Failed to fetch prospect from WordPress: {e}",
+            )
+    else:
+        return GenerateEmailResponse(
+            success=False,
+            prospect_id=request.prospect_id,
+            campaign_id=0,
+            error="WordPress auth not configured. Cannot resolve campaign_id.",
+        )
+
+    if request.callback_url:
+        # Async mode
+        background_tasks.add_task(
+            _generate_and_callback,
+            request.prospect_id,
+            campaign_id,
+            prospect_data,
+            request.callback_url,
+        )
+
+        return GenerateEmailResponse(
+            success=True,
+            prospect_id=request.prospect_id,
+            campaign_id=campaign_id,
+            error="Processing in background. Results will be POSTed to callback_url.",
+        )
+
+    # Sync mode — prospect_data is already fetched, pass it through
+    return await _run_pipeline(
+        request.prospect_id,
+        campaign_id,
+        prospect_data,
     )
 
 
