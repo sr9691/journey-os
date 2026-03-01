@@ -81,6 +81,8 @@ class GenerateEmailResponse(BaseModel):
     intent_service_area: str | None = None
     intent_confidence: float | None = None
     analysis_source: str | None = None
+    writeback_tracking_id: int | None = None
+    writeback_success: bool | None = None
     processing_time_ms: int = 0
     error: str | None = None
 
@@ -392,6 +394,7 @@ async def _run_pipeline(
         guardrail = result.get("guardrail_result")
         selected = result.get("selected_content")
         intent = result.get("intent_profile")
+        writeback = result.get("writeback_result")
 
         return GenerateEmailResponse(
             success=result.get("error") is None,
@@ -407,6 +410,12 @@ async def _run_pipeline(
             intent_confidence=intent.confidence if intent else None,
             analysis_source=intent.analysis_source if intent else None,
             processing_time_ms=elapsed_ms,
+            writeback_tracking_id=(
+            writeback.get("email_tracking_id") if writeback and "email_tracking_id" in writeback else None
+            ),
+            writeback_success=(
+                writeback is not None and "error" not in writeback
+            ) if writeback else None,            
             error=result.get("error"),
         )
 

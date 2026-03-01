@@ -143,6 +143,128 @@ def handle_error(state: AgentState) -> dict:
     logger.error(f"Workflow error: {error}")
     return {"requires_human_approval": True}
 
+async def write_back_email(state: AgentState) -> dict[str, Any]:
+    # Write the generated email back to WordPress via store-external endpoint
+    #
+    # Only writes back if:
+    #   - No errors in pipeline
+    #   - Email was generated
+    #   - Guardrails passed
+    #   - WordPress auth is configured
+    #
+    # Non-fatal: if write-back fails, logs warning but does not set error.
+    # The email is still available in the pipeline response.
+
+    prospect_id = state["prospect_id"]
+
+    # Skip write-back if pipeline had errors
+    if state.get("error"):
+        logger.info(
+            "Skipping write-back: pipeline has error",
+            extra={"prospect_id": prospect_id},
+        )
+        return {"current_step": "write_back_email"}
+
+    # Skip if no email was generated
+    generated_email = state.get("generated_email")
+    if not generated_email:
+        logger.info(
+            "Skipping write-back: no generated email",
+            extra={"prospect_id": prospect_id},
+        )
+        return {"current_step": "write_back_email"}
+
+    # Skip if guardrails failed
+    guardrail = state.get("guardrail_result")
+    if guardrail and not guardrail.passed:
+        logger.info(
+            "Skipping write-back: guardrail violations",
+            extra={
+                "prospect_id": prospect_id,
+                "violations": guardrail.violation_count,
+            },
+        )
+        return {"current_step": "write_back_email"}
+
+    # Skip if WordPress not configured
+    if not settings.has_wordpress_auth:
+        logger.info(
+            "Skipping write-back: no WordPress auth configured",
+            extra={"prospect_id": prospect_id},
+        )
+        return {"current_step": "write_back_email"}
+
+    # Extract needed data from state
+    prospect_data = state.get("prospect_data", {})
+    selected = state.get("selected_content")
+
+    # Determine room_type from prospect data
+    room_type = prospect_data.get("current_room", "problem")
+
+    # Determine email_number from prospect's sequence position
+    # email_sequence_position tracks how many emails have been sent;
+    # the next email to generate is position + 1
+    email_sequence_position = prospect_data.get("email_sequence_position", 0)
+    email_number = email_sequence_position + 1
+
+    # Parse subject from generated email
+    # The email composer puts subject on the first line as "Subject: ..."
+    body_html = generated_email
+    intent = state.get("intent_profile")
+
+    if selected and selected.title:
+        subject = selected.title
+    elif intent and intent.pain_points:
+        subject = f"Thoughts on {intent.pain_points[0].lower()}"
+    else:
+        company = prospect_data.get("company_name", "your team")
+        subject = f"A resource for {company}"
+
+        
+    # Get selected content URL
+    url_included = selected.url if selected else None
+
+    try:
+        from services.wordpress_client import WordPressClient
+
+        async with WordPressClient() as wp:
+            result = await wp.store_generated_email(
+                prospect_id=prospect_id,
+                room_type=room_type,
+                email_number=email_number,
+                subject=subject,
+                body_html=body_html,
+                body_text="",  # WordPress will strip_tags as fallback
+                url_included=url_included,
+            )
+
+        logger.info(
+            "Write-back to WordPress succeeded",
+            extra={
+                "prospect_id": prospect_id,
+                "tracking_id": result.get("data", {}).get("email_tracking_id"),
+                "room_type": room_type,
+                "email_number": email_number,
+            },
+        )
+
+        return {
+            "writeback_result": result.get("data"),
+            "current_step": "write_back_email",
+        }
+
+    except Exception as e:
+        # Non-fatal — log warning but don't fail the pipeline
+        logger.warning(
+            f"Write-back to WordPress failed (non-fatal): {e}",
+            extra={"prospect_id": prospect_id},
+        )
+        return {
+            "writeback_result": {"error": str(e)},
+            "current_step": "write_back_email",
+        }
+
+
 
 # =============================================================================
 # Graph Construction
@@ -162,6 +284,7 @@ def create_email_generation_graph() -> StateGraph:
     workflow.add_node("rank_assets", rank_assets)
     workflow.add_node("compose_email", compose_email)
     workflow.add_node("inspect_guardrails", inspect_guardrails)
+    workflow.add_node("write_back_email", write_back_email)
     workflow.add_node("handle_error", handle_error)
 
     # Set entry point - fetch data first
@@ -183,7 +306,8 @@ def create_email_generation_graph() -> StateGraph:
     # rank_assets -> compose_email -> inspect_guardrails -> END
     workflow.add_edge("rank_assets", "compose_email")
     workflow.add_edge("compose_email", "inspect_guardrails")
-    workflow.add_edge("inspect_guardrails", END)
+    workflow.add_edge("inspect_guardrails", "write_back_email")
+    workflow.add_edge("write_back_email", END)
     workflow.add_edge("handle_error", END)
 
     return workflow

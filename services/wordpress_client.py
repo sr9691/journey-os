@@ -457,3 +457,88 @@ class WordPressClient:
         except httpx.HTTPError as e:
             logger.error(f"Failed to track email copy: {e}")
             raise WordPressAPIError(f"Failed to track email: {e}") from e
+        
+    async def store_generated_email(
+        self,
+        prospect_id: int,
+        room_type: str,
+        email_number: int,
+        subject: str,
+        body_html: str,
+        body_text: str = "",
+        url_included: str | None = None,
+        ai_prompt_tokens: int = 0,
+        ai_completion_tokens: int = 0,
+    ) -> dict[str, Any]:
+        # Store a CIS-generated email in WordPress tracking table
+        # Endpoint: POST /directreach/v2/emails/store-external
+        #
+        # This POSTs the generated email to WordPress which:
+        #   1. Creates a row in rtr_email_tracking
+        #   2. Generates tracking_token and injects tracking pixel
+        #   3. Updates email_states JSON on the prospect to 'ready'
+        #
+        # Args:
+        #     prospect_id: Actual rtr_prospects.id (NOT visitor_id)
+        #     room_type: "problem", "solution", or "offer"
+        #     email_number: Sequence number (1-5)
+        #     subject: Email subject line
+        #     body_html: HTML email body
+        #     body_text: Plain text fallback (auto-stripped if empty)
+        #     url_included: Content URL included in the email
+        #     ai_prompt_tokens: Token usage for logging
+        #     ai_completion_tokens: Token usage for logging
+        #
+        # Returns:
+        #     WordPress response dict with tracking_id, tracking_token, etc.
+
+        endpoint = f"{self.CB_NS}/emails/store-external"
+        payload = {
+            "prospect_id": prospect_id,
+            "room_type": room_type,
+            "email_number": email_number,
+            "subject": subject,
+            "body_html": body_html,
+            "body_text": body_text,
+            "url_included": url_included,
+            "ai_prompt_tokens": ai_prompt_tokens,
+            "ai_completion_tokens": ai_completion_tokens,
+        }
+
+        try:
+            response = await self.client.post(endpoint, json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+            if not data.get("success"):
+                error_msg = data.get("message", "Unknown error from WordPress")
+                raise WordPressAPIError(f"store-external failed: {error_msg}")
+
+            logger.info(
+                "Stored generated email in WordPress",
+                extra={
+                    "prospect_id": prospect_id,
+                    "room_type": room_type,
+                    "email_number": email_number,
+                    "tracking_id": data.get("data", {}).get("email_tracking_id"),
+                },
+            )
+
+            return data
+
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"WordPress store-external failed: {e.response.status_code}",
+                extra={
+                    "prospect_id": prospect_id,
+                    "response_body": e.response.text[:500],
+                },
+            )
+            raise WordPressAPIError(
+                f"Failed to store email: HTTP {e.response.status_code}",
+                status_code=e.response.status_code,
+            ) from e
+        except httpx.RequestError as e:
+            logger.error(f"Request to store-external failed: {e}")
+            raise WordPressAPIError(f"Request failed: {e}") from e
+
