@@ -53,6 +53,14 @@ class Settings(BaseSettings):
 
     @property
     def has_wordpress_auth(self) -> bool:
+        # Check if any WordPress authentication is configured
+        # Either X-API-Key OR Application Password credentials
+        has_api_key = bool(self.wordpress_api_key)
+        has_basic_auth = bool(self.wordpress_app_user and self.wordpress_app_password)
+        return has_api_key or has_basic_auth
+
+    @property
+    def has_basic_auth(self) -> bool:
         # Check if WordPress Application Password credentials are configured
         return bool(self.wordpress_app_user and self.wordpress_app_password)
 
