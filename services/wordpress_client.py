@@ -19,12 +19,12 @@
 #     - POST /emails/track-copy                       - Track email copy event
 #
 # Auth:
-#   RTR Reading Room: WordPress cookie auth (current_user_can('edit_posts'))
-#   Campaign Builder: WordPress cookie auth (current_user_can('manage_options'))
-#   Legacy CPD API:   X-API-Key header (get_option('cpd_api_key'))
+#   Primary: X-API-Key header (checked by check_permission callback)
+#   Fallback: WordPress Application Passwords (Basic Auth)
 #
-# For external (non-browser) access, use WordPress Application Passwords
-# with Basic Auth, which satisfies current_user_can() checks.
+# The RTR permission callback checks in order:
+#   1. WordPress cookie auth (current_user_can)
+#   2. X-API-Key header (against get_option('cpd_api_key'))
 # =============================================================================
 
 import logging
@@ -128,9 +128,8 @@ class WordPressClient:
     #         links = await wp.get_content_links(campaign_id=1)
     #
     # Auth priority:
-    #   1. WordPress Application Passwords (Basic Auth) - for REST endpoints
-    #      using current_user_can() permission checks
-    #   2. X-API-Key header - for legacy CPD endpoints
+    #   1. X-API-Key header - checked by RTR check_permission callback
+    #   2. WordPress Application Passwords (Basic Auth) - optional fallback
 
     # API namespace prefixes
     RTR_NS = "/wp-json/directreach/v1/reading-room"
@@ -156,32 +155,37 @@ class WordPressClient:
         # Check if Application Password credentials are available
         return bool(self.app_user and self.app_password)
 
+    @property
+    def has_api_key(self) -> bool:
+        # Check if X-API-Key is available
+        return bool(self.api_key)
+
     async def __aenter__(self) -> "WordPressClient":
         # Enter async context manager
-        # Uses Basic Auth (Application Passwords) when credentials are set,
-        # falls back to X-API-Key header for legacy endpoints
+        # Configures auth: X-API-Key header (primary), Basic Auth (optional)
 
         headers: dict[str, str] = {
             "Content-Type": "application/json",
         }
 
-        # Always include X-API-Key for legacy CPD endpoints
-        if self.api_key:
+        # X-API-Key is the primary auth method for RTR endpoints
+        if self.has_api_key:
             headers["X-API-Key"] = self.api_key
+            logger.info("WordPress client using X-API-Key authentication")
 
-        # Build auth for Application Passwords (Basic Auth)
+        # Optional: also include Basic Auth if credentials are available
         auth = None
         if self.has_basic_auth:
             auth = httpx.BasicAuth(
                 username=self.app_user,
                 password=self.app_password,
             )
-            logger.info("WordPress client using Basic Auth (Application Passwords)")
-        else:
+            logger.info("WordPress client also using Basic Auth (Application Passwords)")
+
+        if not self.has_api_key and not self.has_basic_auth:
             logger.warning(
-                "WordPress client has no Application Password credentials. "
-                "REST endpoints using current_user_can() will fail. "
-                "Set WORDPRESS_APP_USER and WORDPRESS_APP_PASSWORD in .env"
+                "WordPress client has no authentication configured. "
+                "Set WORDPRESS_API_KEY in .env for X-API-Key auth."
             )
 
         self._client = httpx.AsyncClient(
@@ -541,4 +545,3 @@ class WordPressClient:
         except httpx.RequestError as e:
             logger.error(f"Request to store-external failed: {e}")
             raise WordPressAPIError(f"Request failed: {e}") from e
-
