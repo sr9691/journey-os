@@ -116,6 +116,22 @@ async def compose_email_v2(state: AgentState) -> dict[str, Any]:
     )
 
     # ------------------------------------------------------------------
+    # 4b. Append revision instructions if in revision loop
+    # ------------------------------------------------------------------
+    revision_instructions = state.get("revision_instructions")
+    if revision_instructions:
+        gen_context["prompt"] = (
+            gen_context["prompt"] + "\n\n" + revision_instructions
+        )
+        logger.info(
+            "Revision instructions appended to prompt",
+            extra={
+                "prospect_id": prospect_id,
+                "revision_count": state.get("revision_count", 0),
+            },
+        )
+
+    # ------------------------------------------------------------------
     # 5. Call Gemini for email generation (or fall back)
     # ------------------------------------------------------------------
     email_text = None

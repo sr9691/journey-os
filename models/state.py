@@ -145,6 +145,7 @@ class AgentState(TypedDict, total=False):
     # Quality control - populated by guardrail_inspector (Phase 4)
     guardrail_result: GuardrailResult | None
     revision_count: int
+    revision_instructions: str | None
     
     # Write-back to WordPress — populated by write_back_email node
     writeback_result: dict[str, Any] | None
@@ -181,6 +182,7 @@ def create_initial_state(
         week_number=None,
         guardrail_result=None,
         revision_count=0,
+        revision_instructions=None,
         current_step="init",
         error=None,
         writeback_result=None,

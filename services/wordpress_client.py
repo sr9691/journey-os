@@ -87,6 +87,9 @@ class Campaign(BaseModel):
     id: int
     client_id: int = 0
     campaign_name: str = ""
+    # Service area from the campaign's journey circle
+    # Populated when the journey circle feature is active
+    service_area: str | None = None
     # Additional fields depend on enrich_campaign_data in the controller
 
 

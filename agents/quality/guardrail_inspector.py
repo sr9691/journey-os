@@ -149,6 +149,16 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
                 )
             )
 
+    # --- Dynamic company name check (Problem Room only) ---
+    # Catches the prospect's actual company name leaking into email copy
+    if room == "problem" and generated_email:
+        company_name = prospect_data.get("company_name", "")
+        if company_name:
+            company_violations = _check_company_name_leak(
+                generated_email, company_name
+            )
+            all_violations.extend(company_violations)
+
     # Determine pass/fail
     has_blocking = any(v.severity == "block" for v in all_violations)
     passed = len(all_violations) == 0
@@ -275,6 +285,63 @@ def inspect_text(text: str, room: str) -> GuardrailResult:
 # Helpers
 # =============================================================================
 
+def _check_company_name_leak(
+    email_text: str,
+    company_name: str,
+) -> list[GuardrailViolation]:
+    # Check if the prospect's company name appears in the email body
+    # This is a Problem Room violation — emails should never reference
+    # the prospect's company by name (private signal firewall)
+    #
+    # Checks: full name, and significant substrings (2+ words) to catch
+    # partial mentions like "Acme" from "Acme Health Systems"
+
+    import re
+
+    violations: list[GuardrailViolation] = []
+    text_lower = email_text.lower()
+
+    # Check full company name
+    name_lower = company_name.strip().lower()
+    if not name_lower:
+        return violations
+
+    if name_lower in text_lower:
+        violations.append(
+            GuardrailViolation(
+                violation_type="company_name_leak",
+                matched_text=company_name,
+                context="Prospect company name found in email — "
+                        "Problem Room emails must not reference the prospect's company",
+                severity="block",
+            )
+        )
+        return violations
+
+    # Check significant words from the company name (skip common suffixes)
+    skip_words = {
+        "inc", "llc", "ltd", "corp", "co", "company", "group", "services",
+        "solutions", "systems", "technologies", "consulting", "partners",
+        "international", "global", "the", "of", "and", "&",
+    }
+    words = [w for w in re.split(r"[\s,.\-&]+", name_lower) if w and w not in skip_words]
+
+    # Only check individual words if they're distinctive (4+ chars)
+    for word in words:
+        if len(word) >= 4 and re.search(rf"\b{re.escape(word)}\b", text_lower):
+            violations.append(
+                GuardrailViolation(
+                    violation_type="company_name_leak",
+                    matched_text=word,
+                    context=f"Possible company name fragment '{word}' from "
+                            f"'{company_name}' found in email",
+                    severity="warning",
+                )
+            )
+
+    return violations
+
+
 def _build_suggestion(room: str, violations: list[GuardrailViolation]) -> str:
     """Build a human-readable suggestion from violations."""
 
@@ -301,6 +368,7 @@ def _build_suggestion(room: str, violations: list[GuardrailViolation]) -> str:
         "field_note_ban_list": "Remove banned outreach phrases",
         "signal_leakage": "Remove tracking/intent data references",
         "field_note_subject": "Add 'Field Note:' subject prefix",
+        "company_name_leak": "Remove prospect company name from email",
     }
 
     for vtype, matches in by_type.items():

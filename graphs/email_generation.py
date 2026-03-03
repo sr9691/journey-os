@@ -32,6 +32,7 @@ from agents.matching.intent_summarizer import analyze_intent
 from agents.matching.asset_ranker import rank_assets
 from agents.email.compose_field_note import compose_email_v2
 from agents.quality.guardrail_inspector import inspect_guardrails
+from agents.quality.revision_interpreter import interpret_revisions, MAX_REVISION_ATTEMPTS
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +73,25 @@ async def fetch_prospect_data(state: AgentState) -> dict[str, Any]:
         async with WordPressClient() as wp:
             prospect = await wp.get_prospect(prospect_id)
 
+            # Also fetch campaign to get service_area from journey circle
+            campaign_service_area = None
+            if campaign_id:
+                try:
+                    campaign = await wp.get_campaign(campaign_id)
+                    campaign_service_area = campaign.service_area
+                except Exception as ce:
+                    logger.warning(
+                        f"Failed to fetch campaign {campaign_id}: {ce}",
+                        extra={"prospect_id": prospect_id},
+                    )
+
         # Convert Pydantic model to dict for state
         prospect_dict = prospect.model_dump()
+
+        # Inject campaign service_area into prospect_data
+        # The intent summarizer uses this as fallback when behavioral signals are weak
+        if campaign_service_area:
+            prospect_dict["campaign_service_area"] = campaign_service_area
 
         logger.info(
             "Fetched prospect from WordPress",
@@ -82,6 +100,7 @@ async def fetch_prospect_data(state: AgentState) -> dict[str, Any]:
                 "company": prospect.company_name,
                 "room": prospect.current_room,
                 "lead_score": prospect.lead_score,
+                "campaign_service_area": campaign_service_area,
             },
         )
 
@@ -152,6 +171,32 @@ async def rank_assets_node(state: AgentState) -> dict[str, Any]:
             "selected_content": None,
             "error": str(e),
         }
+
+
+def _route_after_guardrails(
+    state: AgentState,
+) -> Literal["write_back_email", "interpret_revisions", "handle_error"]:
+    # Route after guardrail inspection
+    #
+    # - Passed → write_back_email
+    # - Failed + revision_count < MAX → interpret_revisions → compose_email loop
+    # - Failed + revision_count >= MAX → handle_error (requires human approval)
+
+    guardrail_result = state.get("guardrail_result")
+    revision_count = state.get("revision_count", 0)
+
+    if guardrail_result is None or guardrail_result.passed:
+        return "write_back_email"
+
+    if revision_count >= MAX_REVISION_ATTEMPTS:
+        logger.warning(
+            f"Max revision attempts ({MAX_REVISION_ATTEMPTS}) reached, "
+            f"flagging for human review",
+            extra={"prospect_id": state.get("prospect_id", 0)},
+        )
+        return "handle_error"
+
+    return "interpret_revisions"
 
 
 def handle_error(state: AgentState) -> dict:
@@ -303,6 +348,7 @@ def create_email_generation_graph() -> StateGraph:
     workflow.add_node("rank_assets", rank_assets_node)
     workflow.add_node("compose_email", compose_email_v2)
     workflow.add_node("inspect_guardrails", inspect_guardrails)
+    workflow.add_node("interpret_revisions", interpret_revisions)
     workflow.add_node("write_back_email", write_back_email)
     workflow.add_node("handle_error", handle_error)
 
@@ -339,7 +385,21 @@ def create_email_generation_graph() -> StateGraph:
         },
     )
     workflow.add_edge("compose_email", "inspect_guardrails")
-    workflow.add_edge("inspect_guardrails", "write_back_email")
+
+    # inspect_guardrails -> route: pass → write_back, fail → revision loop or error
+    workflow.add_conditional_edges(
+        "inspect_guardrails",
+        _route_after_guardrails,
+        {
+            "write_back_email": "write_back_email",
+            "interpret_revisions": "interpret_revisions",
+            "handle_error": "handle_error",
+        },
+    )
+
+    # Revision loop: interpret_revisions → compose_email (which re-runs guardrails)
+    workflow.add_edge("interpret_revisions", "compose_email")
+
     workflow.add_edge("write_back_email", END)
     workflow.add_edge("handle_error", END)
 

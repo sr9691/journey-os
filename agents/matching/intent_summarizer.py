@@ -328,8 +328,11 @@ def _analyze_with_rules(
 def _extract_service_area(prospect_data: dict[str, Any]) -> str | None:
     """Determine primary service area interest from prospect data.
 
-    Checks engagement_data for URL patterns, then falls back to
-    industry-based heuristics.
+    Priority:
+    1. Explicit service_area on prospect
+    2. Behavioral signals from engagement_data (URL patterns)
+    3. Campaign service_area (from journey circle)
+    4. Industry-based heuristic (last resort)
     """
 
     # Check if prospect data has explicit service area
@@ -348,6 +351,11 @@ def _extract_service_area(prospect_data: dict[str, Any]) -> str | None:
             return "data-analytics"
         if "modernization" in engagement_lower or "modernize" in engagement_lower:
             return "cloud-modernization"
+
+    # Campaign service_area from journey circle (injected by fetch_prospect_data)
+    campaign_sa = prospect_data.get("campaign_service_area")
+    if campaign_sa:
+        return campaign_sa
 
     # Fallback: industry-based heuristic
     industry = prospect_data.get("industry", "").lower()
