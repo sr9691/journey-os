@@ -139,6 +139,9 @@ def _build_prospect_context(
     if prospect_data:
         if prospect_data.get("contact_name"):
             parts.append(f"- Recipient name: {prospect_data['contact_name']}")
+            # Extract first name for greeting
+            first_name = prospect_data["contact_name"].split()[0]
+            parts.append(f"- First name (for greeting): {first_name}")
         if prospect_data.get("company_name"):
             parts.append(f"- Company: {prospect_data['company_name']}")
         if prospect_data.get("industry"):
@@ -150,6 +153,13 @@ def _build_prospect_context(
                 f"- Scale: {prospect_data['employee_count']} "
                 "(use scale-aware wording, don't cite exact numbers)"
             )
+
+    # Sender info — hardcoded placeholder until campaign settings provide it
+    parts.append("- Sender name: [Sender Name]")
+    parts.append(
+        "  (Use exactly '[Sender Name]' as the sender. "
+        "Do NOT invent a first name like 'Alex' or 'Sam'.)"
+    )
 
     # Private context (topic selection only)
     parts.append("\n### PRIVATE (use ONLY to choose topic/angle — NEVER mention in email)")

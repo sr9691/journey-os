@@ -36,7 +36,7 @@ Use this exact structure:
 
 Hi {first_name} —
 
-I'm {sender_name}.
+I'm [Sender Name].
 
 I send one short note like this each week on {problem_space}. If it's not useful, reply "stop" and I'll disappear.
 
@@ -97,7 +97,7 @@ Close with EXACTLY:
 
 No need to reply. Hope it helps.
 
-{sender_name}
+[Sender Name]
 
 Rules:
 - No ask. No call. No meeting request. No question that requires a reply.

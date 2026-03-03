@@ -323,7 +323,7 @@ def _count_body_words(email_text: str) -> int:
         "Hi ",
         "No need to reply",
         "Hope it helps",
-        "{sender_name}",
+        "[Sender Name]",
         "http://",
         "https://",
         "If you want the longer breakdown",
@@ -335,7 +335,7 @@ def _count_body_words(email_text: str) -> int:
             continue
         if any(stripped.startswith(p) or p in stripped for p in skip_patterns):
             continue
-        # Skip "I'm {sender_name}." intro line
+        # Skip "I'm [Sender Name]." intro line
         if stripped.startswith("I'm ") and len(stripped) < 40:
             continue
         # Skip opt-out lines
