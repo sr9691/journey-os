@@ -128,7 +128,14 @@ class AgentState(TypedDict, total=False):
     ranked_assets: list[RankedAsset]
     selected_content: RankedAsset | None
 
-    # Email generation - populated by email assembler (future)
+    # Email pipeline — new Field Note pipeline nodes
+    prompt_components: dict[str, str] | None
+    content_insights: dict[str, Any] | None
+    generation_config: dict[str, Any] | None
+    email_format: str | None
+    week_number: int | None
+
+    # Email generation - populated by email composer
     email_context: dict[str, Any] | None
     generated_email: str | None
 
@@ -164,6 +171,11 @@ def create_initial_state(
         selected_content=None,
         email_context=None,
         generated_email=None,
+        prompt_components=None,
+        content_insights=None,
+        generation_config=None,
+        email_format=None,
+        week_number=None,
         guardrail_result=None,
         revision_count=0,
         current_step="init",

@@ -58,15 +58,16 @@ SOLUTION_MENTION_PATTERNS: list[str] = [
 
 PRICING_LANGUAGE_PATTERNS: list[str] = [
     r"\$\d+",
-    r"\b(?:pricing|price|cost|fee|rate|subscription|plan|tier)\b",
+    r"\b(?:pricing|price|fee|rate|subscription|plan|tier)\b",
     r"\b(?:discount|offer|deal|savings|free trial)\b",
+    r"\bcost\s+(?:of|per|for|to)\s+(?:the\s+)?(?:service|platform|product|license|tool)\b",
     r"\bROI\b",
     r"\breturn on investment\b",
 ]
 
 SALES_CTA_PATTERNS: list[str] = [
     r"\b(?:book|schedule|request)\s+(?:a\s+)?(?:demo|call|meeting|consultation)\b",
-    r"\b(?:sign up|signup|register|subscribe)\b",
+    r"\b(?:sign up|register|subscribe)\s+(?:now|today|here|for|to)\b",
     r"\b(?:get started|start your|try it|buy now|order now)\b",
     r"\b(?:contact us|reach out to us|talk to (?:us|our|a rep))\b",
     r"\b(?:free trial|free consultation)\b",
@@ -80,8 +81,10 @@ AGGRESSIVE_SALES_PATTERNS: list[str] = [
 ]
 
 SUPERLATIVE_PATTERNS: list[str] = [
-    r"\b(?:best|leading|top|premier|world.class|cutting.edge)\b",
+    r"\b(?:leading|premier|world.class|cutting.edge)\b",
     r"\b(?:industry.leading|market.leading|best.in.class)\b",
+    r"\bbest\b(?!\s+\d)",  # "best" but not "best 3" etc.
+    r"\btop\b(?!\s+\d)(?:\s+(?:rated|performing|tier|choice|pick|notch))",  # "top rated" but not "top 3"
     r"#\s*1\b",
     r"\bnumber\s+one\b",
     r"\b(?:unmatched|unparalleled|unrivaled|unbeatable)\b",

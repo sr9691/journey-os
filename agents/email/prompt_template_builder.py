@@ -10,7 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from models.state import AgentState, ContentAsset
+from models.state import AgentState
+from models.prospect import ContentAsset
 from models.prospect import ProspectIntent, Room
 from agents.email.room_templates import (
     EMAIL_FORMAT_FIELD_NOTE,

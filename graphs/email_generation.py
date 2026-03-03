@@ -30,7 +30,7 @@ from config.settings import settings
 from models.state import AgentState
 from agents.matching.intent_summarizer import analyze_intent
 from agents.matching.asset_ranker import rank_assets
-from agents.generation.email_composer import compose_email
+from agents.email.compose_field_note import compose_email_v2
 from agents.quality.guardrail_inspector import inspect_guardrails
 
 logger = logging.getLogger(__name__)
@@ -282,7 +282,7 @@ def create_email_generation_graph() -> StateGraph:
     workflow.add_node("fetch_prospect_data", fetch_prospect_data)
     workflow.add_node("analyze_intent", analyze_intent)
     workflow.add_node("rank_assets", rank_assets)
-    workflow.add_node("compose_email", compose_email)
+    workflow.add_node("compose_email", compose_email_v2)
     workflow.add_node("inspect_guardrails", inspect_guardrails)
     workflow.add_node("write_back_email", write_back_email)
     workflow.add_node("handle_error", handle_error)

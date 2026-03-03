@@ -9,7 +9,8 @@ import logging
 from typing import Any
 from datetime import datetime
 
-from models.state import AgentState, ContentAsset
+from models.state import AgentState
+from models.prospect import ContentAsset
 from models.prospect import ProspectIntent, Room
 from agents.email.prompt_template_builder import (
     assemble_full_prompt,

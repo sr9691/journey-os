@@ -27,6 +27,7 @@ from config.guardrails import (
     ROOM_RULES,
     find_pattern_matches,
     is_violation_checked,
+    check_word_count,
 )
 from models.state import AgentState, GuardrailResult, GuardrailViolation
 
@@ -120,6 +121,34 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
                 )
             )
 
+    # --- Word count check (programmatic, not regex) ---
+    if is_violation_checked(room, ViolationType.WORD_COUNT) and generated_email:
+        # Extract body words (exclude Subject: line, greeting, signature, link line)
+        body_word_count = _count_body_words(generated_email)
+        wc_violations = check_word_count(body_word_count, room)
+        for wc_match in wc_violations:
+            all_violations.append(
+                GuardrailViolation(
+                    violation_type=ViolationType.WORD_COUNT.value,
+                    matched_text=wc_match["match"],
+                    context=wc_match.get("context", ""),
+                    severity="warning",
+                )
+            )
+
+    # --- Field Note subject prefix check (Problem Room only) ---
+    if room == "problem" and generated_email:
+        subject_line = _extract_subject(generated_email)
+        if subject_line and not subject_line.startswith("Field Note:"):
+            all_violations.append(
+                GuardrailViolation(
+                    violation_type="field_note_subject",
+                    matched_text=subject_line[:60],
+                    context="Problem Room emails must use 'Field Note:' subject prefix",
+                    severity="warning",
+                )
+            )
+
     # Determine pass/fail
     has_blocking = any(v.severity == "block" for v in all_violations)
     passed = len(all_violations) == 0
@@ -202,6 +231,36 @@ def inspect_text(text: str, room: str) -> GuardrailResult:
     passed = len(all_violations) == 0
     suggestion = _build_suggestion(room, all_violations)
 
+    # --- Word count check ---
+    if is_violation_checked(room, ViolationType.WORD_COUNT):
+        body_word_count = _count_body_words(text)
+        wc_violations = check_word_count(body_word_count, room)
+        for wc_match in wc_violations:
+            all_violations.append(
+                GuardrailViolation(
+                    violation_type=ViolationType.WORD_COUNT.value,
+                    matched_text=wc_match["match"],
+                    context=wc_match.get("context", ""),
+                    severity="warning",
+                )
+            )
+
+    # --- Field Note subject prefix check (Problem Room only) ---
+    if room == "problem":
+        subject_line = _extract_subject(text)
+        if subject_line and not subject_line.startswith("Field Note:"):
+            all_violations.append(
+                GuardrailViolation(
+                    violation_type="field_note_subject",
+                    matched_text=subject_line[:60],
+                    context="Problem Room emails must use 'Field Note:' subject prefix",
+                    severity="warning",
+                )
+            )
+
+    passed = len(all_violations) == 0
+    suggestion = _build_suggestion(room, all_violations)
+
     return GuardrailResult(
         passed=passed,
         room=room,
@@ -238,11 +297,63 @@ def _build_suggestion(room: str, violations: list[GuardrailViolation]) -> str:
         "competitor_mention": "Remove competitor references",
         "unsupported_claim": "Add evidence for claims",
         "tone_mismatch": "Adjust tone for room",
+        "word_count": "Adjust email length",
+        "field_note_ban_list": "Remove banned outreach phrases",
+        "signal_leakage": "Remove tracking/intent data references",
+        "field_note_subject": "Add 'Field Note:' subject prefix",
     }
 
     for vtype, matches in by_type.items():
         label = type_labels.get(vtype, vtype)
-        examples = ", ".join(f'"{ m}"' for m in matches[:3])
+        examples = ", ".join(f'"{m}"' for m in matches[:3])
         parts.append(f"  - {label}: {examples}")
 
     return "\n".join(parts)
+
+
+def _count_body_words(email_text: str) -> int:
+    # Count words in the email body, excluding subject line,
+    # greeting (Hi X —), signature, and link line
+    # Matches GPT spec: word count excludes greeting/signature/link
+
+    lines = email_text.strip().split("\n")
+    body_lines: list[str] = []
+    skip_patterns = [
+        "Subject:",
+        "Hi ",
+        "No need to reply",
+        "Hope it helps",
+        "{sender_name}",
+        "http://",
+        "https://",
+        "If you want the longer breakdown",
+    ]
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if any(stripped.startswith(p) or p in stripped for p in skip_patterns):
+            continue
+        # Skip "I'm {sender_name}." intro line
+        if stripped.startswith("I'm ") and len(stripped) < 40:
+            continue
+        # Skip opt-out lines
+        if "reply" in stripped.lower() and "stop" in stripped.lower():
+            continue
+        body_lines.append(stripped)
+
+    body_text = " ".join(body_lines)
+    return len(body_text.split())
+
+
+def _extract_subject(email_text: str) -> str | None:
+    # Extract subject line from email text
+    # Looks for "Subject: ..." on first line
+
+    lines = email_text.strip().split("\n")
+    for line in lines[:3]:  # Check first 3 lines
+        stripped = line.strip()
+        if stripped.lower().startswith("subject:"):
+            return stripped[len("Subject:"):].strip()
+    return None

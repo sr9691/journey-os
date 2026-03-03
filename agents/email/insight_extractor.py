@@ -9,7 +9,8 @@ import json
 import logging
 from typing import Any
 
-from models.state import AgentState, ContentAsset
+from models.state import AgentState
+from models.prospect import ContentAsset
 from models.prospect import ProspectIntent, Room
 
 logger = logging.getLogger(__name__)
