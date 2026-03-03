@@ -109,6 +109,7 @@ class ContentAsset(BaseModel):
     room: str = Field(default="problem", description="Room: problem, solution, offer")
     content_type: str = Field(default="article", description="article, case_study, guide, etc.")
     summary: str | None = Field(default=None, description="Brief content summary")
+    article_body: str | None = Field(default=None, description="Full article text fetched from URL")
     score: float = Field(default=0.0, description="Relevance score from asset ranker")
     match_reasons: list[str] = Field(
         default_factory=list,

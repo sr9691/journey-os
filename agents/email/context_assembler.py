@@ -191,6 +191,18 @@ def _build_content_context(
     if content_dict.get("summary"):
         context_parts.append(f"- Summary: {content_dict['summary']}")
 
+    # Include full article body when available (for grounded insights)
+    article_body = content_dict.get("article_body")
+    if article_body:
+        context_parts.append(
+            "\n## Full Article Content (use to ground ALL claims in the email)\n"
+        )
+        context_parts.append(article_body)
+        context_parts.append(
+            "\nIMPORTANT: Every claim, quick test, and small move in your email "
+            "MUST be grounded in the article content above. Do not invent facts."
+        )
+
     context_parts.append("\nIntegrate this link naturally in the email body.")
 
     return "\n".join(context_parts)

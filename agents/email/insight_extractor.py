@@ -54,6 +54,8 @@ Focus on insights that would be useful for a {role} at a {industry} company.
 ## Content Summary:
 {summary}
 
+{article_body_section}
+
 ## Content URL: {url}
 
 ## Prospect Context:
@@ -62,7 +64,7 @@ Focus on insights that would be useful for a {role} at a {industry} company.
 - Pain points: {pain_points}
 - Service area interest: {service_area}
 
-Extract insights now. Output ONLY JSON."""
+Extract insights now. Every insight MUST be grounded in the article content above. Output ONLY JSON."""
 
 
 # ============================================================================
@@ -146,6 +148,20 @@ def _fallback_extract_insights(
 # LLM-based Extraction
 # ============================================================================
 
+def _build_article_body_section(content_dict: dict[str, Any]) -> str:
+    # Build the article body section for the extraction prompt
+    # Returns full article text block or empty string if unavailable
+
+    article_body = content_dict.get("article_body")
+    if not article_body:
+        return ""
+
+    return (
+        "## Full Article Content:\n"
+        f"{article_body}\n"
+    )
+
+
 def _extract_insights_with_llm(
     content: ContentAsset | dict[str, Any],
     intent_profile: ProspectIntent,
@@ -180,6 +196,7 @@ def _extract_insights_with_llm(
     prompt = INSIGHT_EXTRACTION_PROMPT.format(
         title=content_dict.get("title", "Unknown"),
         summary=content_dict.get("summary", "No summary available"),
+        article_body_section=_build_article_body_section(content_dict),
         url=content_dict.get("url", ""),
         industry=industry or "B2B Services",
         role=role or "Operations Leader",

@@ -71,7 +71,15 @@ async def compose_email_v2(state: AgentState) -> dict[str, Any]:
     week_number = state.get("week_number")
 
     # ------------------------------------------------------------------
-    # 2. Extract insights (optional, best-effort)
+    # 2a. Fetch full article content from URL (best-effort)
+    # ------------------------------------------------------------------
+    if content_asset.url and not content_asset.article_body:
+        article_text = await _fetch_article_body(content_asset.url)
+        if article_text:
+            content_asset.article_body = article_text
+
+    # ------------------------------------------------------------------
+    # 2b. Extract insights (uses article_body when available)
     # ------------------------------------------------------------------
     content_insights = state.get("content_insights")
     if content_insights is None:
@@ -272,6 +280,19 @@ def _ranked_asset_to_content_asset(ranked: Any) -> Any:
         room=data.get("room", "problem"),
         content_type=data.get("content_type", "article"),
         summary=data.get("summary"),
+        article_body=data.get("article_body"),
         score=data.get("score", 0.0),
         match_reasons=data.get("match_reasons", []),
     )
+
+
+async def _fetch_article_body(url: str) -> str | None:
+    # Fetch full article text from URL for content grounding
+    # Returns None if fetch fails or URL is a placeholder
+
+    try:
+        from services.article_fetcher import fetch_article_text
+        return await fetch_article_text(url)
+    except Exception as e:
+        logger.debug(f"Article fetch skipped: {e}")
+        return None
