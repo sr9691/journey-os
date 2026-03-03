@@ -40,22 +40,14 @@ async def compose_email_v2(state: AgentState) -> dict[str, Any]:
     )
 
     if not old_intent or not selected_content:
-        if not old_intent:
-            logger.warning(
-                "Missing intent_profile, skipping email generation",
-                extra={"prospect_id": prospect_id},
-            )
-            return {
-                "generated_email": None,
-                "current_step": "compose_email_v2",
-            }
-
-        # No ranked content available — use business-impact fallback
-        logger.info(
-            "No content selected, using business-impact fallback",
+        logger.warning(
+            "Missing intent_profile or selected_content, skipping email generation",
             extra={"prospect_id": prospect_id},
         )
-        selected_content = _build_impact_fallback_content(prospect_data, old_intent)
+        return {
+            "generated_email": None,
+            "current_step": "compose_email_v2",
+        }
 
     # ------------------------------------------------------------------
     # 1. Convert old state.ProspectIntent → new models.prospect.ProspectIntent

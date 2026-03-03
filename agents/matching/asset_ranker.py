@@ -2,21 +2,21 @@
 # Asset Ranker Agent
 # =============================================================================
 #
-# Ranks available content links for a prospect based on weighted scoring:
-# - Room match (required filter - assets must match prospect's current room)
-# - Service area alignment (+25 points via url_summary keyword matching)
-# - Persona match (+20 points via job_title to content keyword matching)
-# - Industry relevance (+20 points via industry to url_summary matching)
-# - Format preference (+10 points based on content type heuristic)
-# - Content freshness (+5 points based on created_at recency)
+# Selects the next content link for a prospect based on:
+#   1. Room gate — prospect's room (from lead_score) is the default
+#   2. Visit-based unlock — if prospect visited content at a link_order,
+#      the next room's content at that same order is unlocked
+#      (Problem visited -> Solution unlocked -> Offer unlocked)
+#   3. link_order ascending — lowest unsent order wins
 #
-# Fetches real content links from WordPress via REST API.
-# Falls back to mock data if WordPress is unreachable.
+# No mocks, no fallbacks. Errors propagate if:
+#   - WordPress is unavailable
+#   - Campaign has no active content for the relevant room
+#   - All content for the prospect is exhausted
 # =============================================================================
 
 import json
 import logging
-from datetime import datetime, timedelta
 from typing import Any
 
 from models.state import AgentState, ProspectIntent, RankedAsset
@@ -24,85 +24,44 @@ from config.guardrails import get_room_from_score
 
 logger = logging.getLogger(__name__)
 
-# Scoring weights for content ranking
-SCORING_WEIGHTS = {
-    "service_area": 25,
-    "persona": 20,
-    "industry": 20,
-    "format_preference": 10,
-    "freshness": 5,
-}
-
-# Base score for room-matched assets
-BASE_ROOM_MATCH_SCORE = 20
-
-# Minimum score to include in results
-MIN_SCORE_THRESHOLD = 10
-
-# Maximum ranked assets to return
-MAX_RANKED_ASSETS = 10
-
-# Freshness: content newer than this gets full freshness points
-FRESHNESS_DAYS = 90
-
-# Persona keyword mapping: job title keywords -> persona category
-PERSONA_KEYWORDS: dict[str, list[str]] = {
-    "executive": ["ceo", "cto", "cio", "cfo", "coo", "chief", "president", "vp",
-                   "vice president", "partner", "founder", "owner"],
-    "director": ["director", "head of", "senior manager", "principal"],
-    "manager": ["manager", "lead", "supervisor", "coordinator"],
-    "technical": ["engineer", "developer", "architect", "analyst", "admin",
-                  "devops", "sre", "data scientist"],
-}
-
-# Service area keywords for matching against url_summary/link_title
-SERVICE_AREA_KEYWORDS: dict[str, list[str]] = {
-    "ai-development": ["ai", "artificial intelligence", "machine learning", "gen ai",
-                        "generative ai", "poc", "proof of concept", "llm", "ml"],
-    "cloud-migration": ["migration", "cloud migration", "data center", "legacy",
-                         "lift and shift", "aws", "azure", "7r", "tco"],
-    "data-analytics": ["data", "analytics", "lakehouse", "warehouse", "data silo",
-                        "real-time analytics", "data maturity", "bi"],
-    "cloud-modernization": ["modernization", "modernize", "microservices",
-                             "monolithic", "devops", "containerization", "kubernetes"],
-}
+# Room progression order
+ROOM_PROGRESSION = ["problem", "solution", "offer"]
 
 
 # =============================================================================
 # Main Entry Point
 # =============================================================================
 
-def rank_assets(state: AgentState) -> dict[str, Any]:
-    # Rank available content assets for the prospect
+async def rank_assets(state: AgentState) -> dict[str, Any]:
+    # Select the next content link for the prospect
     #
     # Reads: intent_profile, prospect_data, campaign_id
-    # Returns: ranked_assets, selected_content
+    # Returns: ranked_assets (list with single selection), selected_content
     #
-    # Content selection is PROGRESSION-BASED:
-    #   - If prospect has visited Problem N content → select Solution N
-    #   - If prospect has visited Solution N content → select Offer N
-    #   - If no content visits found → start with Problem 1 (link_order=1)
-    #   - link_order pairs content across rooms (Problem 1 → Solution 1 → Offer 1)
+    # Room is a hard gate with visit-based unlock:
+    #   - Default: content must match prospect's current room
+    #   - Exception: if prospect VISITED content at link_order N,
+    #     the next room's content at order N is unlocked
+    #   - Chain: Problem visited -> Solution unlocked,
+    #            Solution visited -> Offer unlocked
     #
-    # Falls back to room-filtered scoring if WordPress is unavailable.
+    # Within eligible content, lowest unsent link_order wins.
+    # Errors if no content is available (no mocks, no fallbacks).
 
     intent_profile = state.get("intent_profile")
     prospect_data = state.get("prospect_data", {})
     campaign_id = state.get("campaign_id", 0)
+    prospect_id = state.get("prospect_id", 0)
 
     if intent_profile is None:
-        logger.warning("No intent profile available for ranking")
-        return {"ranked_assets": [], "selected_content": None}
+        logger.error("No intent profile available for ranking")
+        return {
+            "ranked_assets": [],
+            "selected_content": None,
+            "error": "Missing intent_profile in state",
+        }
 
-    # Handle both Pydantic model and dict
-    if isinstance(intent_profile, ProspectIntent):
-        service_area = intent_profile.service_area or "general"
-        prospect_id = intent_profile.prospect_id
-    else:
-        service_area = intent_profile.get("service_area", "general")
-        prospect_id = intent_profile.get("prospect_id", 0)
-
-    # Determine prospect's room (used only for fallback and logging)
+    # Determine prospect's room
     room = prospect_data.get("current_room", "")
     if not room:
         lead_score = prospect_data.get("lead_score", 0)
@@ -119,475 +78,317 @@ def rank_assets(state: AgentState) -> dict[str, Any]:
         extra={
             "prospect_id": prospect_id,
             "campaign_id": campaign_id,
-            "service_area": service_area,
             "room": room,
             "urls_sent_count": len(urls_sent),
             "visited_urls_count": len(visited_urls),
         },
     )
 
-    # Try fetching ALL content links from WordPress (all rooms)
-    all_content_links = _fetch_all_content_links(campaign_id)
+    # Fetch ALL content links from WordPress (all rooms needed for progression check)
+    all_links = await _fetch_all_content_links(campaign_id)
 
-    if all_content_links is not None:
-        # Progression-based selection
-        ranked_assets = _select_by_progression(
-            all_links=all_content_links,
-            visited_urls=visited_urls,
-            urls_sent=urls_sent,
-            service_area=service_area,
-            prospect_data=prospect_data,
-        )
-    else:
-        # Fallback: room-filtered scoring with mock data
-        logger.info("Using mock assets (WordPress unavailable)")
-        ranked_assets = _get_mock_assets(service_area, prospect_data)
-
-    # Select top asset for email
-    selected = ranked_assets[0] if ranked_assets else None
+    # Select content using room-gated progression
+    selected = _select_content(
+        all_links=all_links,
+        prospect_room=room,
+        visited_urls=visited_urls,
+        urls_sent=urls_sent,
+        prospect_id=prospect_id,
+        campaign_id=campaign_id,
+    )
 
     logger.info(
         "Asset ranking complete",
         extra={
-            "total_candidates": len(ranked_assets),
-            "selected_asset": selected.title if selected else None,
-            "selected_room": selected.room if selected else None,
-            "source": "wordpress" if all_content_links is not None else "mock",
+            "prospect_id": prospect_id,
+            "selected_title": selected.title,
+            "selected_room": selected.room,
+            "selected_order": selected.link_order,
+            "match_reason": selected.match_reasons[0] if selected.match_reasons else "",
         },
     )
 
     return {
-        "ranked_assets": ranked_assets,
+        "ranked_assets": [selected],
         "selected_content": selected,
     }
+
+
+# =============================================================================
+# Content Selection (room-gated with visit-based unlock)
+# =============================================================================
+
+def _select_content(
+    all_links: dict[str, list[dict[str, Any]]],
+    prospect_room: str,
+    visited_urls: set[str],
+    urls_sent: set[str],
+    prospect_id: int,
+    campaign_id: int,
+) -> RankedAsset:
+    # Select the next content link using room-gated progression
+    #
+    # For each link_order (ascending):
+    #   1. Check if prospect visited content at earlier rooms in the chain
+    #   2. Determine the highest unlocked room at this order
+    #   3. If that content hasn't been sent, select it
+    #
+    # Raises ValueError if no content is available.
+
+    # Index all active links by (link_order, room)
+    order_map: dict[int, dict[str, dict[str, Any]]] = {}
+
+    for room_key in ROOM_PROGRESSION:
+        for link in all_links.get(room_key, []):
+            if not link.get("is_active", True):
+                continue
+            order = link.get("link_order", 0)
+            if order not in order_map:
+                order_map[order] = {}
+            order_map[order][room_key] = link
+
+    if not order_map:
+        raise ValueError(
+            f"No active content links for campaign {campaign_id}. "
+            f"Content team needs to add content."
+        )
+
+    sorted_orders = sorted(order_map.keys())
+
+    # Check if ANY content exists for the prospect's room (or unlockable rooms)
+    has_any_room_content = False
+
+    for order in sorted_orders:
+        rooms_at_order = order_map[order]
+
+        # Determine the target room at this link_order
+        target_room = _get_target_room(
+            rooms_at_order=rooms_at_order,
+            prospect_room=prospect_room,
+            visited_urls=visited_urls,
+        )
+
+        if target_room is None:
+            continue
+
+        has_any_room_content = True
+        target_link = rooms_at_order.get(target_room)
+
+        if target_link is None:
+            continue
+
+        target_url = target_link.get("link_url", "")
+
+        # Skip if already sent
+        if target_url and _normalize_url(target_url) in urls_sent:
+            logger.debug(
+                f"Skipping already-sent content: order={order} room={target_room}"
+            )
+            continue
+
+        # Found an unsent candidate
+        logger.info(
+            f"Selected content: order={order} room={target_room}",
+            extra={
+                "prospect_id": prospect_id,
+                "link_order": order,
+                "target_room": target_room,
+                "prospect_room": prospect_room,
+            },
+        )
+
+        reason = (
+            "room_match"
+            if target_room == prospect_room
+            else f"progression_unlock_{target_room}"
+        )
+
+        return _link_to_ranked_asset(target_link, reason)
+
+    # No unsent candidate found
+    if not has_any_room_content:
+        raise ValueError(
+            f"Campaign {campaign_id} has no content for room '{prospect_room}' "
+            f"(or unlockable rooms). Campaign may be misconfigured."
+        )
+
+    raise ValueError(
+        f"All content exhausted for prospect {prospect_id} in room "
+        f"'{prospect_room}'. Content team needs to add more content."
+    )
+
+
+def _get_target_room(
+    rooms_at_order: dict[str, dict[str, Any]],
+    prospect_room: str,
+    visited_urls: set[str],
+) -> str | None:
+    # Determine the target room for a given link_order
+    #
+    # Logic:
+    #   - Start from the prospect's room
+    #   - If prospect visited content at current room, unlock next room
+    #   - Chain forward until we find unvisited content or hit the end
+    #   - Never go BELOW the prospect's room
+    #
+    # Returns the room to send content from, or None if sequence is complete.
+
+    prospect_room_idx = (
+        ROOM_PROGRESSION.index(prospect_room)
+        if prospect_room in ROOM_PROGRESSION
+        else 0
+    )
+
+    # Start at the prospect's room and check for visit-based unlocks
+    target_idx = prospect_room_idx
+
+    while target_idx < len(ROOM_PROGRESSION):
+        current_room = ROOM_PROGRESSION[target_idx]
+        link = rooms_at_order.get(current_room)
+
+        if link is None:
+            # No content at this room for this order — can't progress further
+            break
+
+        link_url = link.get("link_url", "")
+        if link_url and _normalize_url(link_url) in visited_urls:
+            # Prospect visited this content — unlock next room
+            target_idx += 1
+            continue
+
+        # Prospect hasn't visited this content — this is the target
+        return current_room
+
+    # Walked past the end (all visited) or no content — sequence complete
+    return None
 
 
 # =============================================================================
 # WordPress Fetch
 # =============================================================================
 
-def _fetch_all_content_links(
+async def _fetch_all_content_links(
     campaign_id: int,
-) -> dict[str, list[dict[str, Any]]] | None:
+) -> dict[str, list[dict[str, Any]]]:
     # Fetch ALL content links from WordPress for the campaign (all rooms)
     # Returns dict keyed by room: {"problem": [...], "solution": [...], "offer": [...]}
-    # Returns None if WordPress is unavailable (triggers mock fallback)
+    # Raises ValueError if WordPress is unavailable or campaign has no content
 
     from config.settings import settings
 
     if not settings.has_wordpress_auth:
-        logger.info("No WordPress auth configured, skipping content link fetch")
-        return None
+        raise ValueError(
+            "WordPress auth not configured. "
+            "Set WORDPRESS_APP_USER and WORDPRESS_APP_PASSWORD in .env"
+        )
 
     if not campaign_id:
-        logger.warning("No campaign_id provided, skipping content link fetch")
-        return None
+        raise ValueError("No campaign_id provided")
 
     try:
-        import asyncio
         from services.wordpress_client import WordPressClient
 
-        async def _fetch() -> dict[str, list[dict[str, Any]]]:
-            async with WordPressClient() as wp:
-                grouped = await wp.get_content_links(campaign_id)
-                return {
-                    room: [link.model_dump() for link in links]
-                    for room, links in grouped.items()
-                }
-
-        try:
-            asyncio.get_running_loop()
-            logger.warning(
-                "rank_assets called from async context, cannot fetch WordPress. "
-                "Consider making rank_assets async or pre-fetching content links."
-            )
-            return None
-        except RuntimeError:
-            return asyncio.run(_fetch())
+        async with WordPressClient() as wp:
+            grouped = await wp.get_content_links(campaign_id)
+            return {
+                room: [link.model_dump() for link in links]
+                for room, links in grouped.items()
+            }
 
     except Exception as e:
-        logger.warning(
-            f"Failed to fetch content links from WordPress: {e}",
-            extra={"campaign_id": campaign_id},
-        )
-        return None
+        raise ValueError(
+            f"Failed to fetch content links for campaign {campaign_id}: {e}"
+        ) from e
 
 
 # =============================================================================
-# Visited URL Parsing (delegated to content_progression)
+# Helpers
 # =============================================================================
 
-from agents.matching.content_progression import (
-    parse_visited_urls as _parse_visited_urls,
-    normalize_url as _normalize_url,
-    select_by_progression as _select_by_progression_impl,
-)
+def _link_to_ranked_asset(
+    link: dict[str, Any],
+    reason: str,
+) -> RankedAsset:
+    # Convert a content link dict to a RankedAsset
 
-
-def _select_by_progression(
-    all_links: dict[str, list[dict[str, Any]]],
-    visited_urls: set[str],
-    urls_sent: set[str],
-    service_area: str,
-    prospect_data: dict[str, Any],
-) -> list[RankedAsset]:
-    # Wrapper that passes scoring callbacks to the progression engine
-
-    return _select_by_progression_impl(
-        all_links=all_links,
-        visited_urls=visited_urls,
-        urls_sent=urls_sent,
-        service_area=service_area,
-        prospect_data=prospect_data,
-        score_fn=_score_real_assets,
-        infer_content_type_fn=_infer_content_type,
+    return RankedAsset(
+        asset_id=link.get("id", 0),
+        url=link.get("link_url", ""),
+        title=link.get("link_title", ""),
+        room=link.get("room_type", ""),
+        score=100.0,
+        match_reasons=[reason],
+        content_type="article",
+        summary=link.get("url_summary") or link.get("link_description") or None,
+        link_order=link.get("link_order", 0),
     )
 
 
-# =============================================================================
-# Real Asset Scoring
-# =============================================================================
-
-def _score_real_assets(
-    content_links: list[dict[str, Any]],
-    room: str,
-    service_area: str,
-    prospect_data: dict[str, Any],
-    urls_sent: set[str],
-) -> list[RankedAsset]:
-    # Score real WordPress content links using weighted criteria
-    #
-    # Filters:
-    #   - is_active must be True
-    #   - URL must not be in urls_sent
-    #   - room_type must match prospect's room (already filtered by API)
-    #
-    # Scoring:
-    #   Base room match: +20 points
-    #   Service area alignment: +25 (keyword match in url_summary/link_title)
-    #   Persona match: +20 (job title category match)
-    #   Industry relevance: +20 (industry keywords in url_summary)
-    #   Format preference: +10 (based on content type heuristic)
-    #   Freshness: +5 (content newer than FRESHNESS_DAYS)
-
-    job_title = (prospect_data.get("job_title") or "").lower()
-    industry = (prospect_data.get("industry") or "").lower()
-
-    scored: list[RankedAsset] = []
-
-    for link in content_links:
-        # Filter: inactive links
-        if not link.get("is_active", True):
-            continue
-
-        # Filter: already-sent URLs
-        link_url = link.get("link_url", "")
-        if link_url in urls_sent:
-            logger.debug(f"Skipping already-sent URL: {link_url}")
-            continue
-
-        # Score this asset
-        score = BASE_ROOM_MATCH_SCORE
-        match_reasons: list[str] = ["room_match"]
-
-        # Combine searchable text from the link
-        searchable = _get_searchable_text(link)
-
-        # Service area alignment (+25)
-        if _matches_service_area(searchable, service_area):
-            score += SCORING_WEIGHTS["service_area"]
-            match_reasons.append("service_area")
-
-        # Persona match (+20)
-        if _matches_persona(searchable, job_title):
-            score += SCORING_WEIGHTS["persona"]
-            match_reasons.append("persona")
-
-        # Industry relevance (+20)
-        if _matches_industry(searchable, industry):
-            score += SCORING_WEIGHTS["industry"]
-            match_reasons.append("industry")
-
-        # Format preference (+10)
-        if _matches_format_preference(link, prospect_data):
-            score += SCORING_WEIGHTS["format_preference"]
-            match_reasons.append("format_preference")
-
-        # Freshness (+5)
-        if _is_fresh(link):
-            score += SCORING_WEIGHTS["freshness"]
-            match_reasons.append("freshness")
-
-        if score >= MIN_SCORE_THRESHOLD:
-            scored.append(RankedAsset(
-                asset_id=link.get("id", 0),
-                url=link_url,
-                title=link.get("link_title", ""),
-                room=link.get("room_type", room),
-                score=float(score),
-                match_reasons=match_reasons,
-                content_type=_infer_content_type(link),
-                summary=link.get("url_summary") or link.get("link_description") or None,
-                link_order=link.get("link_order", 0),
-            ))
-
-    # Sort by score descending, limit results
-    scored.sort(key=lambda a: a.score, reverse=True)
-    return scored[:MAX_RANKED_ASSETS]
+def _normalize_url(url: str) -> str:
+    # Normalize URL for comparison
+    url = url.strip().lower().rstrip("/")
+    for prefix in ("https://", "http://"):
+        if url.startswith(prefix):
+            url = url[len(prefix):]
+            break
+    if url.startswith("www."):
+        url = url[4:]
+    return url
 
 
-# =============================================================================
-# Scoring Helpers
-# =============================================================================
+def _parse_visited_urls(prospect_data: dict[str, Any]) -> set[str]:
+    # Extract URLs the prospect has visited from engagement_data and pages_visited
 
-def _get_searchable_text(link: dict[str, Any]) -> str:
-    # Combine link title, url_summary, and description into searchable text
-    parts = [
-        link.get("link_title", ""),
-        link.get("url_summary", ""),
-        link.get("link_description", ""),
-    ]
-    return " ".join(p for p in parts if p).lower()
+    visited: set[str] = set()
 
+    # Direct pages_visited field
+    pages_visited = prospect_data.get("pages_visited", [])
+    if isinstance(pages_visited, list):
+        for url in pages_visited:
+            if isinstance(url, str) and url:
+                visited.add(_normalize_url(url))
 
-def _matches_service_area(searchable: str, service_area: str) -> bool:
-    # Check if content aligns with the prospect's service area interest
-    # Uses keyword matching against url_summary and link_title
-    keywords = SERVICE_AREA_KEYWORDS.get(service_area, [])
-    return any(kw in searchable for kw in keywords)
+    # Parse engagement_data JSON string
+    engagement_raw = prospect_data.get("engagement_data")
+    if not engagement_raw:
+        return visited
 
+    if isinstance(engagement_raw, str):
+        try:
+            engagement = json.loads(engagement_raw)
+        except (json.JSONDecodeError, TypeError):
+            return visited
+    elif isinstance(engagement_raw, (list, dict)):
+        engagement = engagement_raw
+    else:
+        return visited
 
-def _matches_persona(searchable: str, job_title: str) -> bool:
-    # Check if content targets the prospect's persona based on job title
-    # Maps job title to persona category, then checks content keywords
-    if not job_title:
-        return False
+    if isinstance(engagement, list):
+        for item in engagement:
+            if isinstance(item, str):
+                visited.add(_normalize_url(item))
+            elif isinstance(item, dict):
+                url = item.get("url") or item.get("page_url") or item.get("path", "")
+                if url:
+                    visited.add(_normalize_url(url))
 
-    prospect_persona = _get_persona_category(job_title)
-    if not prospect_persona:
-        return False
-
-    # Content keywords that indicate targeting a specific persona
-    persona_content_keywords: dict[str, list[str]] = {
-        "executive": ["strategy", "roi", "leadership", "risk", "investment",
-                       "business value", "ceo", "cto", "executive"],
-        "director": ["roadmap", "planning", "team", "process", "priorities",
-                      "assessment", "framework"],
-        "manager": ["implementation", "workflow", "coordination", "manage",
-                     "steps", "practical"],
-        "technical": ["architecture", "implementation", "how to", "technical",
-                       "guide", "steps", "deploy", "configure", "build"],
-    }
-
-    content_kws = persona_content_keywords.get(prospect_persona, [])
-    return any(kw in searchable for kw in content_kws)
-
-
-def _get_persona_category(job_title: str) -> str | None:
-    # Map a job title to a persona category
-    title_lower = job_title.lower()
-    for category, keywords in PERSONA_KEYWORDS.items():
-        if any(kw in title_lower for kw in keywords):
-            return category
-    return None
-
-
-def _matches_industry(searchable: str, industry: str) -> bool:
-    # Check if content is relevant to the prospect's industry
-    if not industry:
-        return False
-
-    # Direct industry name match
-    if industry in searchable:
-        return True
-
-    # Common industry alias matching
-    industry_aliases: dict[str, list[str]] = {
-        "healthcare": ["health", "medical", "clinical", "hipaa", "patient"],
-        "financial services": ["finance", "banking", "fintech", "compliance"],
-        "manufacturing": ["manufacturing", "supply chain", "operations", "iot"],
-        "technology": ["tech", "saas", "software", "platform"],
-        "retail": ["retail", "ecommerce", "e-commerce", "consumer"],
-    }
-
-    for base_industry, aliases in industry_aliases.items():
-        if any(alias in industry for alias in [base_industry] + aliases):
-            return any(alias in searchable for alias in aliases)
-
-    return False
-
-
-def _infer_content_type(link: dict[str, Any]) -> str:
-    # Infer content type from title/summary keywords
-    # Since content_type isn't stored in the DB table, we heuristic it
-
-    searchable = _get_searchable_text(link)
-
-    if any(kw in searchable for kw in ["case study", "success story", "how we helped"]):
-        return "case_study"
-    if any(kw in searchable for kw in ["whitepaper", "white paper", "research report"]):
-        return "whitepaper"
-    if any(kw in searchable for kw in ["guide", "how to", "step by step", "steps"]):
-        return "guide"
-    if any(kw in searchable for kw in ["webinar", "video", "watch"]):
-        return "video"
-    if any(kw in searchable for kw in ["checklist", "template", "toolkit"]):
-        return "tool"
-
-    return "article"
-
-
-def _matches_format_preference(
-    link: dict[str, Any],
-    prospect_data: dict[str, Any],
-) -> bool:
-    # Match content format to prospect's room stage
-    # Since content_type isn't on the DB table, infer from title/summary keywords
-    #
-    # Problem room -> educational, awareness content
-    # Solution room -> comparison, how-to content
-    # Offer room -> action-oriented, ROI content
-
-    room = prospect_data.get("current_room", "problem")
-    searchable = _get_searchable_text(link)
-
-    if room == "problem":
-        return any(kw in searchable for kw in [
-            "why", "symptom", "sign", "red flag", "breakdown", "hidden",
-            "what you're missing", "obstacle",
-        ])
-    elif room == "solution":
-        return any(kw in searchable for kw in [
-            "how to", "vs", "versus", "pros and cons", "roadmap",
-            "framework", "guide", "steps", "assessment",
-        ])
-    elif room == "offer":
-        return any(kw in searchable for kw in [
-            "practical", "production ready", "accelerate", "speed",
-            "cost", "roi", "automate", "partner",
-        ])
-
-    return False
-
-
-def _is_fresh(link: dict[str, Any]) -> bool:
-    # Check if content was created/updated within FRESHNESS_DAYS
-    date_str = link.get("updated_at") or link.get("created_at")
-    if not date_str:
-        return False
-
-    try:
-        created = datetime.strptime(date_str[:19], "%Y-%m-%d %H:%M:%S")
-        cutoff = datetime.now() - timedelta(days=FRESHNESS_DAYS)
-        return created >= cutoff
-    except (ValueError, TypeError):
-        return False
+    return visited
 
 
 def _parse_urls_sent(urls_sent_raw: Any) -> set[str]:
     # Parse the urls_sent field from prospect data
-    # WordPress stores this as a JSON array string or Python list
     if not urls_sent_raw:
         return set()
 
     if isinstance(urls_sent_raw, list):
-        return set(urls_sent_raw)
+        return {_normalize_url(u) for u in urls_sent_raw if isinstance(u, str)}
 
     if isinstance(urls_sent_raw, str):
         try:
             parsed = json.loads(urls_sent_raw)
             if isinstance(parsed, list):
-                return set(parsed)
+                return {_normalize_url(u) for u in parsed if isinstance(u, str)}
         except (json.JSONDecodeError, TypeError):
             pass
 
     return set()
-
-
-# =============================================================================
-# Mock Fallback (for testing without WordPress)
-# =============================================================================
-
-def _get_mock_assets(
-    service_area: str,
-    prospect_data: dict[str, Any],
-) -> list[RankedAsset]:
-    # Generate mock ranked assets for testing
-    # Content titles from CleanSlate_Article_Charts.pdf
-
-    mock_library: dict[str, list[RankedAsset]] = {
-        "ai-development": [
-            RankedAsset(
-                asset_id=101,
-                url="https://example.com/blog/poc-limbo",
-                title="Are Your Gen AI Experiments Stuck in POC Limbo?",
-                room="problem",
-                score=85.0,
-                match_reasons=["service_area", "pain_point_match"],
-            ),
-            RankedAsset(
-                asset_id=102,
-                url="https://example.com/blog/ai-roadmap",
-                title="Building an AI Roadmap: 5 Priorities for Getting Started",
-                room="solution",
-                score=72.0,
-                match_reasons=["service_area", "industry_match"],
-            ),
-        ],
-        "cloud-migration": [
-            RankedAsset(
-                asset_id=201,
-                url="https://example.com/blog/data-center-budget",
-                title="Is Your Data Center Draining Your Budget?",
-                room="problem",
-                score=88.0,
-                match_reasons=["service_area", "pain_point_match", "persona"],
-            ),
-            RankedAsset(
-                asset_id=202,
-                url="https://example.com/blog/migration-roadmap",
-                title="Understanding Your Migration Roadmap and TCO",
-                room="solution",
-                score=70.0,
-                match_reasons=["service_area"],
-            ),
-        ],
-        "data-analytics": [
-            RankedAsset(
-                asset_id=301,
-                url="https://example.com/blog/data-silos",
-                title="Drowning in Data Silos? 7 Red Flags to Watch For",
-                room="problem",
-                score=82.0,
-                match_reasons=["service_area", "industry_match"],
-            ),
-            RankedAsset(
-                asset_id=302,
-                url="https://example.com/blog/lakehouse-comparison",
-                title="Data Lakehouse vs. Traditional Warehousing: Pros and Cons",
-                room="solution",
-                score=68.0,
-                match_reasons=["service_area"],
-            ),
-        ],
-        "cloud-modernization": [
-            RankedAsset(
-                asset_id=401,
-                url="https://example.com/blog/lift-shift-fatigue",
-                title="Lift and Shift Fatigue: Why Applications Aren't Truly Modern",
-                room="problem",
-                score=80.0,
-                match_reasons=["service_area"],
-            ),
-            RankedAsset(
-                asset_id=402,
-                url="https://example.com/blog/monolith-to-microservices",
-                title="Transforming Monolithic Apps to Microservices: Steps and Benefits",
-                room="solution",
-                score=65.0,
-                match_reasons=["service_area"],
-            ),
-        ],
-    }
-
-    return mock_library.get(service_area, mock_library["ai-development"])

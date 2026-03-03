@@ -37,29 +37,12 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Mock Data (fallback when WordPress is unreachable)
-# =============================================================================
-
-MOCK_PROSPECT_DATA: dict[str, Any] = {
-    "id": 0,  # Will be overwritten with actual prospect_id
-    "campaign_id": 0,  # Will be overwritten with actual campaign_id
-    "current_room": "problem",
-    "lead_score": 35,
-    "company_name": "Acme Health Systems",
-    "contact_name": "Sarah Johnson",
-    "job_title": "VP of Operations",
-    "industry": "Healthcare",
-    "employee_count": "1001-5000",
-}
-
-
-# =============================================================================
 # Graph Nodes
 # =============================================================================
 
 async def fetch_prospect_data(state: AgentState) -> dict[str, Any]:
     # Fetch prospect data from WordPress REST API
-    # Falls back to mock data if WordPress is unreachable or unconfigured
+    # Errors if WordPress is unreachable or unconfigured (no mock fallback)
     #
     # Requires WORDPRESS_APP_USER and WORDPRESS_APP_PASSWORD in .env
     # for Basic Auth against endpoints using current_user_can()
@@ -75,52 +58,58 @@ async def fetch_prospect_data(state: AgentState) -> dict[str, Any]:
         )
         return {"current_step": "fetch_prospect_data"}
 
-    # Attempt to fetch from WordPress
-    if settings.has_wordpress_auth:
-        try:
-            from services.wordpress_client import WordPressClient
+    # Validate WordPress auth
+    if not settings.has_wordpress_auth:
+        return {
+            "error": "WordPress auth not configured. "
+                     "Set WORDPRESS_APP_USER and WORDPRESS_APP_PASSWORD in .env",
+            "current_step": "fetch_prospect_data",
+        }
 
-            async with WordPressClient() as wp:
-                prospect = await wp.get_prospect(prospect_id)
+    try:
+        from services.wordpress_client import WordPressClient
 
-            # Convert Pydantic model to dict for state
-            prospect_dict = prospect.model_dump()
+        async with WordPressClient() as wp:
+            prospect = await wp.get_prospect(prospect_id)
 
-            logger.info(
-                "Fetched prospect from WordPress",
-                extra={
-                    "prospect_id": prospect_id,
-                    "company": prospect.company_name,
-                    "room": prospect.current_room,
-                    "lead_score": prospect.lead_score,
-                },
-            )
+        # Convert Pydantic model to dict for state
+        prospect_dict = prospect.model_dump()
 
-            return {
-                "prospect_data": prospect_dict,
-                "current_step": "fetch_prospect_data",
-            }
-
-        except Exception as e:
-            logger.warning(
-                f"WordPress fetch failed, falling back to mock data: {e}",
-                extra={"prospect_id": prospect_id},
-            )
-    else:
         logger.info(
-            "No WordPress auth configured, using mock data",
-            extra={"prospect_id": prospect_id},
+            "Fetched prospect from WordPress",
+            extra={
+                "prospect_id": prospect_id,
+                "company": prospect.company_name,
+                "room": prospect.current_room,
+                "lead_score": prospect.lead_score,
+            },
         )
 
-    # Fallback to mock data
-    mock = MOCK_PROSPECT_DATA.copy()
-    mock["id"] = prospect_id
-    mock["campaign_id"] = campaign_id
+        return {
+            "prospect_data": prospect_dict,
+            "current_step": "fetch_prospect_data",
+        }
 
-    return {
-        "prospect_data": mock,
-        "current_step": "fetch_prospect_data",
-    }
+    except Exception as e:
+        logger.error(
+            f"Failed to fetch prospect {prospect_id}: {e}",
+            extra={"prospect_id": prospect_id},
+        )
+        return {
+            "error": f"Failed to fetch prospect {prospect_id}: {e}",
+            "current_step": "fetch_prospect_data",
+        }
+
+
+def _route_after_fetch(state: AgentState) -> Literal["analyze_intent", "handle_error"]:
+    # Route after prospect data fetch
+    # Errors if WordPress is unavailable or prospect not found
+
+    if state.get("error"):
+        return "handle_error"
+    if state.get("prospect_data") is None:
+        return "handle_error"
+    return "analyze_intent"
 
 
 def route_after_intent(state: AgentState) -> Literal["rank_assets", "handle_error"]:
@@ -133,6 +122,36 @@ def route_after_intent(state: AgentState) -> Literal["rank_assets", "handle_erro
     if state.get("intent_profile") is None:
         return "handle_error"
     return "rank_assets"
+
+
+def _route_after_rank(state: AgentState) -> Literal["compose_email", "handle_error"]:
+    # Route after asset ranking
+    # Errors from rank_assets (no content, exhausted, WP unavailable)
+    # are caught by rank_assets_node and stored in state["error"]
+
+    if state.get("error"):
+        return "handle_error"
+    if state.get("selected_content") is None:
+        return "handle_error"
+    return "compose_email"
+
+
+async def rank_assets_node(state: AgentState) -> dict[str, Any]:
+    # Wrapper around rank_assets that catches ValueError
+    # and converts to state error (so the graph can route to handle_error)
+
+    try:
+        return await rank_assets(state)
+    except ValueError as e:
+        logger.error(
+            f"Content selection failed: {e}",
+            extra={"prospect_id": state.get("prospect_id", 0)},
+        )
+        return {
+            "ranked_assets": [],
+            "selected_content": None,
+            "error": str(e),
+        }
 
 
 def handle_error(state: AgentState) -> dict:
@@ -281,7 +300,7 @@ def create_email_generation_graph() -> StateGraph:
     # Add nodes
     workflow.add_node("fetch_prospect_data", fetch_prospect_data)
     workflow.add_node("analyze_intent", analyze_intent)
-    workflow.add_node("rank_assets", rank_assets)
+    workflow.add_node("rank_assets", rank_assets_node)
     workflow.add_node("compose_email", compose_email_v2)
     workflow.add_node("inspect_guardrails", inspect_guardrails)
     workflow.add_node("write_back_email", write_back_email)
@@ -290,8 +309,15 @@ def create_email_generation_graph() -> StateGraph:
     # Set entry point - fetch data first
     workflow.set_entry_point("fetch_prospect_data")
 
-    # fetch_prospect_data always proceeds to analyze_intent
-    workflow.add_edge("fetch_prospect_data", "analyze_intent")
+    # fetch_prospect_data -> route based on error or continue
+    workflow.add_conditional_edges(
+        "fetch_prospect_data",
+        _route_after_fetch,
+        {
+            "analyze_intent": "analyze_intent",
+            "handle_error": "handle_error",
+        },
+    )
 
     # Add conditional edge after intent analysis
     workflow.add_conditional_edges(
@@ -303,8 +329,15 @@ def create_email_generation_graph() -> StateGraph:
         },
     )
 
-    # rank_assets -> compose_email -> inspect_guardrails -> END
-    workflow.add_edge("rank_assets", "compose_email")
+    # rank_assets -> route based on error or continue
+    workflow.add_conditional_edges(
+        "rank_assets",
+        _route_after_rank,
+        {
+            "compose_email": "compose_email",
+            "handle_error": "handle_error",
+        },
+    )
     workflow.add_edge("compose_email", "inspect_guardrails")
     workflow.add_edge("inspect_guardrails", "write_back_email")
     workflow.add_edge("write_back_email", END)
