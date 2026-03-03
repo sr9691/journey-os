@@ -78,8 +78,13 @@ def rank_assets(state: AgentState) -> dict[str, Any]:
     # Reads: intent_profile, prospect_data, campaign_id
     # Returns: ranked_assets, selected_content
     #
-    # Attempts to fetch real content links from WordPress.
-    # Falls back to mock data if WordPress is unavailable.
+    # Content selection is PROGRESSION-BASED:
+    #   - If prospect has visited Problem N content → select Solution N
+    #   - If prospect has visited Solution N content → select Offer N
+    #   - If no content visits found → start with Problem 1 (link_order=1)
+    #   - link_order pairs content across rooms (Problem 1 → Solution 1 → Offer 1)
+    #
+    # Falls back to room-filtered scoring if WordPress is unavailable.
 
     intent_profile = state.get("intent_profile")
     prospect_data = state.get("prospect_data", {})
@@ -97,7 +102,7 @@ def rank_assets(state: AgentState) -> dict[str, Any]:
         service_area = intent_profile.get("service_area", "general")
         prospect_id = intent_profile.get("prospect_id", 0)
 
-    # Determine prospect's room
+    # Determine prospect's room (used only for fallback and logging)
     room = prospect_data.get("current_room", "")
     if not room:
         lead_score = prospect_data.get("lead_score", 0)
@@ -105,6 +110,9 @@ def rank_assets(state: AgentState) -> dict[str, Any]:
 
     # Parse urls_sent for deduplication
     urls_sent = _parse_urls_sent(prospect_data.get("urls_sent"))
+
+    # Parse visited URLs from engagement_data
+    visited_urls = _parse_visited_urls(prospect_data)
 
     logger.info(
         "Ranking assets",
@@ -114,22 +122,24 @@ def rank_assets(state: AgentState) -> dict[str, Any]:
             "service_area": service_area,
             "room": room,
             "urls_sent_count": len(urls_sent),
+            "visited_urls_count": len(visited_urls),
         },
     )
 
-    # Try fetching real content links from WordPress
-    content_links = _fetch_content_links(campaign_id, room)
+    # Try fetching ALL content links from WordPress (all rooms)
+    all_content_links = _fetch_all_content_links(campaign_id)
 
-    if content_links is not None:
-        ranked_assets = _score_real_assets(
-            content_links=content_links,
-            room=room,
+    if all_content_links is not None:
+        # Progression-based selection
+        ranked_assets = _select_by_progression(
+            all_links=all_content_links,
+            visited_urls=visited_urls,
+            urls_sent=urls_sent,
             service_area=service_area,
             prospect_data=prospect_data,
-            urls_sent=urls_sent,
         )
     else:
-        # Fallback to mock data
+        # Fallback: room-filtered scoring with mock data
         logger.info("Using mock assets (WordPress unavailable)")
         ranked_assets = _get_mock_assets(service_area, prospect_data)
 
@@ -141,7 +151,8 @@ def rank_assets(state: AgentState) -> dict[str, Any]:
         extra={
             "total_candidates": len(ranked_assets),
             "selected_asset": selected.title if selected else None,
-            "source": "wordpress" if content_links is not None else "mock",
+            "selected_room": selected.room if selected else None,
+            "source": "wordpress" if all_content_links is not None else "mock",
         },
     )
 
@@ -155,15 +166,12 @@ def rank_assets(state: AgentState) -> dict[str, Any]:
 # WordPress Fetch
 # =============================================================================
 
-def _fetch_content_links(
+def _fetch_all_content_links(
     campaign_id: int,
-    room: str,
-) -> list[dict[str, Any]] | None:
-    # Fetch content links from WordPress for the campaign and room
+) -> dict[str, list[dict[str, Any]]] | None:
+    # Fetch ALL content links from WordPress for the campaign (all rooms)
+    # Returns dict keyed by room: {"problem": [...], "solution": [...], "offer": [...]}
     # Returns None if WordPress is unavailable (triggers mock fallback)
-    #
-    # Uses synchronous wrapper since rank_assets is a sync LangGraph node.
-    # The WordPress client is async, so we run it in an event loop.
 
     from config.settings import settings
 
@@ -179,31 +187,61 @@ def _fetch_content_links(
         import asyncio
         from services.wordpress_client import WordPressClient
 
-        async def _fetch() -> list[dict[str, Any]]:
+        async def _fetch() -> dict[str, list[dict[str, Any]]]:
             async with WordPressClient() as wp:
-                links = await wp.get_content_links_flat(campaign_id, room)
-                return [link.model_dump() for link in links]
+                grouped = await wp.get_content_links(campaign_id)
+                return {
+                    room: [link.model_dump() for link in links]
+                    for room, links in grouped.items()
+                }
 
-        # Run async fetch — use asyncio.run if no loop is running
         try:
             asyncio.get_running_loop()
-            # Already in async context (e.g. called from async graph node)
-            # Can't nest asyncio.run, fall back to mock
             logger.warning(
                 "rank_assets called from async context, cannot fetch WordPress. "
                 "Consider making rank_assets async or pre-fetching content links."
             )
             return None
         except RuntimeError:
-            # No running loop — safe to use asyncio.run
             return asyncio.run(_fetch())
 
     except Exception as e:
         logger.warning(
             f"Failed to fetch content links from WordPress: {e}",
-            extra={"campaign_id": campaign_id, "room": room},
+            extra={"campaign_id": campaign_id},
         )
         return None
+
+
+# =============================================================================
+# Visited URL Parsing (delegated to content_progression)
+# =============================================================================
+
+from agents.matching.content_progression import (
+    parse_visited_urls as _parse_visited_urls,
+    normalize_url as _normalize_url,
+    select_by_progression as _select_by_progression_impl,
+)
+
+
+def _select_by_progression(
+    all_links: dict[str, list[dict[str, Any]]],
+    visited_urls: set[str],
+    urls_sent: set[str],
+    service_area: str,
+    prospect_data: dict[str, Any],
+) -> list[RankedAsset]:
+    # Wrapper that passes scoring callbacks to the progression engine
+
+    return _select_by_progression_impl(
+        all_links=all_links,
+        visited_urls=visited_urls,
+        urls_sent=urls_sent,
+        service_area=service_area,
+        prospect_data=prospect_data,
+        score_fn=_score_real_assets,
+        infer_content_type_fn=_infer_content_type,
+    )
 
 
 # =============================================================================
@@ -290,6 +328,7 @@ def _score_real_assets(
                 match_reasons=match_reasons,
                 content_type=_infer_content_type(link),
                 summary=link.get("url_summary") or link.get("link_description") or None,
+                link_order=link.get("link_order", 0),
             ))
 
     # Sort by score descending, limit results

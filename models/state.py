@@ -105,6 +105,7 @@ class RankedAsset(BaseModel):
     )
     content_type: str = Field(default="article", description="Content format type")
     summary: str | None = Field(default=None, description="Content summary or description")
+    link_order: int = Field(default=0, description="Position in content sequence")
 
 
 # =============================================================================
