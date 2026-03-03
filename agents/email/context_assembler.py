@@ -185,7 +185,11 @@ def _build_content_context(
 
     context_parts = ["## Content to Include\n"]
     context_parts.append(f"- Title: {content_dict.get('title', 'Resource')}")
-    context_parts.append(f"- URL: {content_dict.get('url', '')}")
+
+    url = content_dict.get("url", "")
+    if url:
+        context_parts.append(f"- URL: {url}")
+
     context_parts.append(f"- Type: {content_dict.get('content_type', 'article')}")
 
     if content_dict.get("summary"):
@@ -203,7 +207,13 @@ def _build_content_context(
             "MUST be grounded in the article content above. Do not invent facts."
         )
 
-    context_parts.append("\nIntegrate this link naturally in the email body.")
+    if url:
+        context_parts.append("\nIntegrate this link naturally in the email body.")
+    else:
+        context_parts.append(
+            "\nNo content link available. Write a standalone insight email "
+            "grounded in the title and summary above. Do NOT fabricate a URL."
+        )
 
     return "\n".join(context_parts)
 

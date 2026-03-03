@@ -288,6 +288,8 @@ def _score_real_assets(
                 room=link.get("room_type", room),
                 score=float(score),
                 match_reasons=match_reasons,
+                content_type=_infer_content_type(link),
+                summary=link.get("url_summary") or link.get("link_description") or None,
             ))
 
     # Sort by score descending, limit results
@@ -374,6 +376,26 @@ def _matches_industry(searchable: str, industry: str) -> bool:
             return any(alias in searchable for alias in aliases)
 
     return False
+
+
+def _infer_content_type(link: dict[str, Any]) -> str:
+    # Infer content type from title/summary keywords
+    # Since content_type isn't stored in the DB table, we heuristic it
+
+    searchable = _get_searchable_text(link)
+
+    if any(kw in searchable for kw in ["case study", "success story", "how we helped"]):
+        return "case_study"
+    if any(kw in searchable for kw in ["whitepaper", "white paper", "research report"]):
+        return "whitepaper"
+    if any(kw in searchable for kw in ["guide", "how to", "step by step", "steps"]):
+        return "guide"
+    if any(kw in searchable for kw in ["webinar", "video", "watch"]):
+        return "video"
+    if any(kw in searchable for kw in ["checklist", "template", "toolkit"]):
+        return "tool"
+
+    return "article"
 
 
 def _matches_format_preference(

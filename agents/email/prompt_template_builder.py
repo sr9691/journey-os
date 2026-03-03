@@ -99,6 +99,125 @@ def _personalize_pain_framing(
     return base_framing + pain_context
 
 
+# ============================================================================
+# Persona-Aware Writing Instructions
+# ============================================================================
+
+# Maps job title keywords to persona category (mirrors asset_ranker)
+_PERSONA_KEYWORDS: dict[str, list[str]] = {
+    "executive": ["ceo", "cto", "cio", "cfo", "coo", "chief", "president", "vp",
+                   "vice president", "partner", "founder", "owner"],
+    "director": ["director", "head of", "senior manager", "principal"],
+    "manager": ["manager", "lead", "supervisor", "coordinator"],
+    "technical": ["engineer", "developer", "architect", "analyst", "admin",
+                  "devops", "sre", "data scientist"],
+}
+
+# Persona-specific writing instructions
+# These shape tone, framing, and detail level for each audience
+PERSONA_WRITING_INSTRUCTIONS: dict[str, str] = {
+    "executive": """
+## Persona: Executive / Senior Leader
+Write for someone who owns budget, strategy, and risk decisions.
+- Lead with BUSINESS IMPACT: revenue, cost, risk exposure, competitive position
+- Frame problems as organizational threats, not technical issues
+- Use "cost of inaction" framing — what happens if nothing changes
+- Keep language strategic, not tactical — they delegate the "how"
+- Reference board-level concerns: growth, margin, compliance, reputation
+- Avoid implementation details, architecture, or step-by-step process
+- Quick tests should be questions they can ask their team, not things they do hands-on
+- Small moves should be decisions or directives, not tasks
+""",
+    "director": """
+## Persona: Director / Department Head
+Write for someone who translates strategy into execution and manages teams.
+- Balance BUSINESS IMPACT with OPERATIONAL REALITY
+- Frame problems as roadblocks to their team's goals or OKRs
+- Reference cross-functional dependencies and coordination challenges
+- Include planning-level guidance: phasing, prioritization, sequencing
+- Quick tests should involve checking team metrics or process gaps
+- Small moves should be things they can initiate this week with their team
+- They care about proving ROI to leadership — give them that language
+""",
+    "manager": """
+## Persona: Manager / Team Lead
+Write for someone who owns day-to-day execution and team productivity.
+- Lead with WORKFLOW IMPACT: time saved, steps eliminated, errors reduced
+- Frame problems as friction their team feels daily
+- Be practical and specific — they need actions, not frameworks
+- Reference common workflow bottlenecks and coordination pain
+- Quick tests should be things they can do or observe in their own work
+- Small moves should be concrete process changes they can try this week
+- They care about making their team's life easier — speak to that
+""",
+    "technical": """
+## Persona: Technical / IC
+Write for someone who implements, builds, and maintains systems.
+- Lead with TECHNICAL IMPACT: reliability, performance, maintainability
+- Frame problems as architecture, tooling, or process debt
+- Be specific about technologies, patterns, and approaches
+- Include concrete technical details — versions, tools, configurations
+- Quick tests should be diagnostic commands, queries, or checks they can run
+- Small moves should be specific technical changes or experiments
+- They respect precision — avoid vague business language
+- They detect BS fast — every claim must be technically grounded
+""",
+}
+
+# Default when no persona match — falls back to business impact framing
+PERSONA_DEFAULT_INSTRUCTIONS = """
+## Persona: Business Stakeholder (default)
+Write for a business professional who cares about outcomes.
+- Lead with BUSINESS IMPACT: time, money, risk, or missed opportunity
+- Frame problems in terms of operational cost or competitive disadvantage
+- Keep language clear and jargon-free
+- Quick tests should be accessible to any business professional
+- Small moves should be practical steps anyone in a leadership role can take
+"""
+
+
+def _get_persona_category(job_title: str) -> str | None:
+    # Map job title to persona category
+    # Uses word boundary matching to avoid substring false positives
+    # (e.g. "director" shouldn't match "cto" via dire-CTO-r)
+    import re
+    title_lower = job_title.lower()
+    for category, keywords in _PERSONA_KEYWORDS.items():
+        if any(re.search(rf"\b{re.escape(kw)}\b", title_lower) for kw in keywords):
+            return category
+    return None
+
+
+def _add_persona_instructions(
+    components: dict[str, str],
+    prospect_data: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    # Add persona-aware writing instructions to prompt components
+    # Shapes tone, detail level, and framing based on job title
+
+    if not prospect_data:
+        persona_instruction = PERSONA_DEFAULT_INSTRUCTIONS
+    else:
+        job_title = prospect_data.get("job_title", "")
+        persona = _get_persona_category(job_title) if job_title else None
+        persona_instruction = PERSONA_WRITING_INSTRUCTIONS.get(
+            persona, PERSONA_DEFAULT_INSTRUCTIONS
+        ) if persona else PERSONA_DEFAULT_INSTRUCTIONS
+
+    # Inject into pain_framing (shapes how the problem is described)
+    components["pain_framing"] = persona_instruction + "\n" + components["pain_framing"]
+
+    # Also add a condensed reminder into value_positioning
+    components["value_positioning"] = (
+        components["value_positioning"]
+        + "\n\nIMPORTANT: Match the framing above to the prospect's persona. "
+        "Write at the level this person operates — don't go too high-level "
+        "for technical roles or too granular for executives."
+    )
+
+    return components
+
+
 def _personalize_content_integration(
     base_integration: str,
     selected_content: ContentAsset | dict[str, Any] | None,
@@ -114,13 +233,25 @@ def _personalize_content_integration(
 
     context_parts = ["## Content to Include\n"]
     context_parts.append(f"- Title: {content_dict.get('title', 'Resource')}")
-    context_parts.append(f"- URL: {content_dict.get('url', '')}")
+
+    url = content_dict.get("url", "")
+    if url:
+        context_parts.append(f"- URL: {url}")
+
     context_parts.append(f"- Type: {content_dict.get('content_type', 'article')}")
 
     if content_dict.get("summary"):
         context_parts.append(f"- Summary: {content_dict['summary']}")
 
-    context_parts.append("\nIntegrate this link naturally in the email body.")
+    if url:
+        context_parts.append("\nIntegrate this link naturally in the email body.")
+    else:
+        context_parts.append(
+            "\nNo content link available. Write a standalone insight email "
+            "grounded in the title and summary above. Do NOT include any URL "
+            "or 'read more' line. The email must deliver full value on its own."
+        )
+
     return "\n".join(context_parts)
 
 
@@ -265,6 +396,9 @@ def build_prompt_template(
     components["pain_framing"] = _personalize_pain_framing(
         components["pain_framing"], intent_profile,
     )
+
+    # Add persona-aware writing instructions
+    components = _add_persona_instructions(components, prospect_data)
 
     # Add content-specific integration guidance
     components["content_integration"] = _personalize_content_integration(

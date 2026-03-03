@@ -103,6 +103,8 @@ class RankedAsset(BaseModel):
         default_factory=list,
         description="Scoring criteria that contributed to the score",
     )
+    content_type: str = Field(default="article", description="Content format type")
+    summary: str | None = Field(default=None, description="Content summary or description")
 
 
 # =============================================================================

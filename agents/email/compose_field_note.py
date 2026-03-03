@@ -40,14 +40,22 @@ async def compose_email_v2(state: AgentState) -> dict[str, Any]:
     )
 
     if not old_intent or not selected_content:
-        logger.warning(
-            "Missing intent_profile or selected_content, skipping email generation",
+        if not old_intent:
+            logger.warning(
+                "Missing intent_profile, skipping email generation",
+                extra={"prospect_id": prospect_id},
+            )
+            return {
+                "generated_email": None,
+                "current_step": "compose_email_v2",
+            }
+
+        # No ranked content available — use business-impact fallback
+        logger.info(
+            "No content selected, using business-impact fallback",
             extra={"prospect_id": prospect_id},
         )
-        return {
-            "generated_email": None,
-            "current_step": "compose_email_v2",
-        }
+        selected_content = _build_impact_fallback_content(prospect_data, old_intent)
 
     # ------------------------------------------------------------------
     # 1. Convert old state.ProspectIntent → new models.prospect.ProspectIntent
@@ -296,3 +304,105 @@ async def _fetch_article_body(url: str) -> str | None:
     except Exception as e:
         logger.debug(f"Article fetch skipped: {e}")
         return None
+
+
+# ============================================================================
+# Business-Impact Fallback Content
+# ============================================================================
+
+# Industry-specific business impact themes for when no content is available
+_INDUSTRY_IMPACT_THEMES: dict[str, dict[str, str]] = {
+    "healthcare": {
+        "title": "The Hidden Operational Costs Most Healthcare Organizations Miss",
+        "summary": (
+            "Healthcare organizations often absorb operational inefficiencies "
+            "as normal — manual handoffs, duplicated data entry, compliance "
+            "workarounds — without measuring the cumulative cost. These small "
+            "frictions compound into margin pressure that shows up as 'just how "
+            "things work' instead of a solvable problem."
+        ),
+    },
+    "financial services": {
+        "title": "Where Financial Services Firms Lose Time Without Realizing It",
+        "summary": (
+            "Financial services firms face a unique combination of regulatory "
+            "pressure and operational complexity. The cost often hides in "
+            "compliance workarounds, manual reconciliation, and reporting "
+            "processes that haven't been re-examined in years."
+        ),
+    },
+    "manufacturing": {
+        "title": "The Operational Drag Most Manufacturers Accept as Normal",
+        "summary": (
+            "Manufacturing operations accumulate process debt over time — "
+            "manual scheduling, disconnected systems, reactive maintenance. "
+            "Each workaround seems small, but together they create drag that "
+            "shows up as missed deadlines, margin pressure, and scaling friction."
+        ),
+    },
+    "technology": {
+        "title": "Why Growing Tech Companies Hit Invisible Operational Ceilings",
+        "summary": (
+            "Tech companies often scale faster than their internal processes. "
+            "What worked at 50 people breaks at 200. The symptoms — longer "
+            "delivery cycles, more meetings, harder hiring — get blamed on "
+            "growth when the real cause is process debt."
+        ),
+    },
+    "retail": {
+        "title": "The Cost of Operational Complexity in Retail",
+        "summary": (
+            "Retail operations juggle inventory, fulfillment, and customer "
+            "experience across channels. The hidden cost is in the manual "
+            "coordination — the spreadsheets, the workarounds, the tribal "
+            "knowledge that holds everything together."
+        ),
+    },
+}
+
+_DEFAULT_IMPACT_THEME: dict[str, str] = {
+    "title": "The Business Cost of Operational Friction You've Stopped Noticing",
+    "summary": (
+        "Most organizations absorb small operational inefficiencies as "
+        "normal — manual workarounds, disconnected systems, tribal knowledge. "
+        "Each one seems minor. Together, they create compounding drag on "
+        "margins, speed, and team capacity. The problem isn't that these "
+        "issues are hard to fix. It's that they've become invisible."
+    ),
+}
+
+
+def _build_impact_fallback_content(
+    prospect_data: dict[str, Any] | None,
+    intent_profile: Any,
+) -> Any:
+    # Build a business-impact content asset when no ranked content is available
+    # Uses industry context to create a relevant problem-awareness piece
+
+    from models.state import RankedAsset
+
+    industry = ""
+    if prospect_data:
+        industry = (prospect_data.get("industry") or "").lower()
+
+    # Find best matching industry theme
+    theme = _DEFAULT_IMPACT_THEME
+    for industry_key, industry_theme in _INDUSTRY_IMPACT_THEMES.items():
+        if industry_key in industry or industry in industry_key:
+            theme = industry_theme
+            break
+
+    service_area = ""
+    if hasattr(intent_profile, "service_area") and intent_profile.service_area:
+        service_area = intent_profile.service_area
+
+    return RankedAsset(
+        asset_id=0,
+        url="",
+        title=theme["title"],
+        room="problem",
+        score=0.0,
+        match_reasons=["business_impact_fallback"],
+        content_type="insight",
+        summary=theme["summary"],
+    )
