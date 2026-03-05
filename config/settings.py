@@ -45,8 +45,10 @@ class Settings(BaseSettings):
     anthropic_max_tokens: int = 1024
 
     # Gemini Settings (Phase 5)
-    gemini_model: str = "gemini-2.0-flash"
-    gemini_max_tokens: int = 2048
+    # gemini-2.5-flash: current stable model as of 2026
+    # 8192 tokens: sufficient for email generation with full article grounding
+    gemini_model: str = "gemini-2.5-flash-preview-04-17"
+    gemini_max_tokens: int = 8192
 
     # JourneyOS Webhook Auth (Phase 6)
     journeyos_api_key: str = ""
