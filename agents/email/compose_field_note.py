@@ -144,6 +144,10 @@ async def compose_email_v2(state: AgentState) -> dict[str, Any]:
 
     if email_text is None:
         # Fall back to old template-based generation
+        logger.warning(
+            "Gemini generation returned None — using template fallback",
+            extra={"prospect_id": prospect_id},
+        )
         email_text = _fallback_template(prospect_data, new_intent, content_asset)
         gen_source = "template"
 
@@ -172,8 +176,10 @@ async def compose_email_v2(state: AgentState) -> dict[str, Any]:
 # ============================================================================
 
 async def _generate_with_gemini(gen_context: dict[str, Any]) -> str | None:
-    # Call Gemini with the assembled context, parse JSON response
-    # Returns the full email text (subject + body) or None on failure
+    # Call Gemini with the assembled context, parse JSON response.
+    # Passes max_output_tokens from gen_context into GeminiClient so the
+    # client-level default (settings.gemini_max_tokens) doesn't cap the output.
+    # Returns the full email text (subject + body) or None on failure.
 
     try:
         from services.llm_client import GeminiClient, LLMClientError
@@ -182,8 +188,20 @@ async def _generate_with_gemini(gen_context: dict[str, Any]) -> str | None:
         system = gen_context.get("system_instruction", "")
         config = gen_context.get("generation_config", {})
         temperature = config.get("temperature", 0.7)
+        # Use max_output_tokens from the assembled config; fall back to settings default
+        max_tokens = config.get("max_output_tokens", settings.gemini_max_tokens)
 
-        async with GeminiClient() as gemini:
+        logger.info(
+            "Calling Gemini",
+            extra={
+                "model": settings.gemini_model,
+                "temperature": temperature,
+                "max_output_tokens": max_tokens,
+                "prompt_chars": len(prompt),
+            },
+        )
+
+        async with GeminiClient(max_tokens=max_tokens) as gemini:
             result = await gemini.complete_json(
                 system=system,
                 user_message=prompt,
@@ -202,7 +220,10 @@ async def _generate_with_gemini(gen_context: dict[str, Any]) -> str | None:
         # The guardrail inspector and write-back node will use this
         email_text = f"Subject: {subject}\n\n{body}" if subject else body
 
-        logger.info("Gemini Field Note generation succeeded")
+        logger.info(
+            "Gemini generation succeeded",
+            extra={"subject": subject[:60] if subject else "", "body_chars": len(body)},
+        )
         return email_text
 
     except Exception as e:
