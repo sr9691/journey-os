@@ -370,7 +370,7 @@ def _extract_service_area(prospect_data: dict[str, Any]) -> str | None:
 def _extract_pain_points(prospect_data: dict[str, Any]) -> list[str]:
     """Extract pain points from prospect signals (industry-based mapping)."""
 
-    industry = prospect_data.get("industry", "").lower()
+    industry = (prospect_data.get("industry") or "").lower()
 
     if "health" in industry:
         return [
