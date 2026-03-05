@@ -147,7 +147,7 @@ def _verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
         # No API key configured \u2014 skip auth (dev mode)
         return
 
-    if x_api_key != settings.wordpress_api_key:
+    if x_api_key != settings.journeyos_api_key:
         raise HTTPException(
             status_code=401,
             detail="Invalid or missing X-API-Key header",
