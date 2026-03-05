@@ -143,7 +143,7 @@ def _verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
     (useful for local development).
     """
 
-    if not settings.wordpress_api_key:
+    if not settings.journeyos_api_key:
         # No API key configured \u2014 skip auth (dev mode)
         return
 
