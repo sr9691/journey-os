@@ -358,7 +358,7 @@ def _extract_service_area(prospect_data: dict[str, Any]) -> str | None:
         return campaign_sa
 
     # Fallback: industry-based heuristic
-    industry = prospect_data.get("industry", "").lower()
+    industry = (prospect_data.get("industry") or "").lower()
     if "health" in industry:
         return "data-analytics"
     elif "finance" in industry or "banking" in industry:
