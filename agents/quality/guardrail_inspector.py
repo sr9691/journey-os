@@ -181,17 +181,27 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
         or len(all_violations) >= MAX_VIOLATIONS_BEFORE_REVIEW
     )
 
-    logger.info(
-        "Guardrail inspection complete",
-        extra={
-            "prospect_id": prospect_id,
-            "room": room,
-            "passed": passed,
-            "violation_count": len(all_violations),
-            "has_blocking": has_blocking,
-            "needs_review": needs_review,
-        },
-    )
+    if all_violations:
+        # Log violations at WARNING so they appear in Render logs
+        violation_summary = [
+            {"type": v.violation_type, "match": v.matched_text, "severity": v.severity}
+            for v in all_violations
+        ]
+        logger.warning(
+            "Guardrail violations found",
+            extra={
+                "prospect_id": prospect_id,
+                "room": room,
+                "violation_count": len(all_violations),
+                "has_blocking": has_blocking,
+                "violations": violation_summary,
+            },
+        )
+    else:
+        logger.info(
+            "Guardrail inspection passed",
+            extra={"prospect_id": prospect_id, "room": room},
+        )
 
     return {
         "guardrail_result": result,
