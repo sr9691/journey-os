@@ -45,17 +45,7 @@ MAX_VIOLATIONS_BEFORE_REVIEW = 3
 
 
 async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
-    """Inspect content against room-specific guardrail rules.
-
-    Reads: prospect_data (for current_room), selected_content, generated_email
-    Returns: guardrail_result
-
-    Currently inspects:
-    - selected_content title (from asset ranker)
-    - generated_email text (when available in Phase 5+)
-
-    Future: Will also inspect email subject lines and CTA text.
-    """
+    """Inspect content against room-specific guardrail rules."""
 
     prospect_data = state.get("prospect_data", {})
     room = prospect_data.get("current_room", "problem")
@@ -69,17 +59,14 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
     # Collect all text to inspect
     texts_to_check: list[str] = []
 
-    # Check generated email if available (Phase 5+)
     generated_email = state.get("generated_email")
     if generated_email:
         texts_to_check.append(generated_email)
 
-    # Check selected content title as a lightweight check
     selected = state.get("selected_content")
     if selected:
         texts_to_check.append(selected.title)
 
-    # If no content to check, pass by default
     if not texts_to_check:
         logger.info(
             "No content to inspect, passing guardrails",
@@ -95,7 +82,6 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
             "current_step": "inspect_guardrails",
         }
 
-    # Combine all text for inspection
     combined_text = "\n\n".join(texts_to_check)
 
     # Run all applicable checks for this room
@@ -111,7 +97,6 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
             severity = (
                 "block" if violation_type in BLOCKING_VIOLATIONS else "warning"
             )
-
             all_violations.append(
                 GuardrailViolation(
                     violation_type=violation_type.value,
@@ -121,9 +106,8 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
                 )
             )
 
-    # --- Word count check (programmatic, not regex) ---
+    # --- Word count check ---
     if is_violation_checked(room, ViolationType.WORD_COUNT) and generated_email:
-        # Extract body words (exclude Subject: line, greeting, signature, link line)
         body_word_count = _count_body_words(generated_email)
         wc_violations = check_word_count(body_word_count, room)
         for wc_match in wc_violations:
@@ -150,7 +134,6 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
             )
 
     # --- Dynamic company name check (Problem Room only) ---
-    # Catches the prospect's actual company name leaking into email copy
     if room == "problem" and generated_email:
         company_name = prospect_data.get("company_name", "")
         if company_name:
@@ -163,7 +146,6 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
     has_blocking = any(v.severity == "block" for v in all_violations)
     passed = len(all_violations) == 0
 
-    # Build human-readable suggestion
     suggestion = _build_suggestion(room, all_violations)
 
     result = GuardrailResult(
@@ -171,36 +153,31 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
         room=room,
         violations=all_violations,
         violation_count=len(all_violations),
-        checked_text=combined_text[:500],  # Truncate for state size
+        checked_text=combined_text[:500],
         suggestion=suggestion,
     )
 
-    # Flag for human review if too many violations or blocking ones
     needs_review = (
         has_blocking
         or len(all_violations) >= MAX_VIOLATIONS_BEFORE_REVIEW
     )
 
     if all_violations:
-        # Log violations at WARNING so they appear in Render logs
-        violation_summary = [
-            {"type": v.violation_type, "match": v.matched_text, "severity": v.severity}
-            for v in all_violations
-        ]
+        # Log each violation inline so Render displays them
+        for v in all_violations:
+            logger.warning(
+                f"[GUARDRAIL] prospect={prospect_id} room={room} "
+                f"type={v.violation_type} severity={v.severity} "
+                f"match='{v.matched_text}'"
+            )
         logger.warning(
-            "Guardrail violations found",
-            extra={
-                "prospect_id": prospect_id,
-                "room": room,
-                "violation_count": len(all_violations),
-                "has_blocking": has_blocking,
-                "violations": violation_summary,
-            },
+            f"[GUARDRAIL] prospect={prospect_id} room={room} "
+            f"total={len(all_violations)} blocking={has_blocking} "
+            f"suggestion: {suggestion}"
         )
     else:
         logger.info(
-            "Guardrail inspection passed",
-            extra={"prospect_id": prospect_id, "room": room},
+            f"[GUARDRAIL] prospect={prospect_id} room={room} PASSED"
         )
 
     return {
@@ -215,17 +192,7 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
 # =============================================================================
 
 def inspect_text(text: str, room: str) -> GuardrailResult:
-    """Inspect arbitrary text against a room's guardrail rules.
-
-    Useful for testing or for checking content outside the graph workflow.
-
-    Args:
-        text: The text to inspect.
-        room: The RTR room to check against (problem, solution, offer).
-
-    Returns:
-        GuardrailResult with violations and pass/fail status.
-    """
+    """Inspect arbitrary text against a room's guardrail rules."""
 
     all_violations: list[GuardrailViolation] = []
 
@@ -248,10 +215,6 @@ def inspect_text(text: str, room: str) -> GuardrailResult:
                 )
             )
 
-    passed = len(all_violations) == 0
-    suggestion = _build_suggestion(room, all_violations)
-
-    # --- Word count check ---
     if is_violation_checked(room, ViolationType.WORD_COUNT):
         body_word_count = _count_body_words(text)
         wc_violations = check_word_count(body_word_count, room)
@@ -265,7 +228,6 @@ def inspect_text(text: str, room: str) -> GuardrailResult:
                 )
             )
 
-    # --- Field Note subject prefix check (Problem Room only) ---
     if room == "problem":
         subject_line = _extract_subject(text)
         if subject_line and not subject_line.startswith("Field Note:"):
@@ -300,18 +262,11 @@ def _check_company_name_leak(
     company_name: str,
 ) -> list[GuardrailViolation]:
     # Check if the prospect's company name appears in the email body
-    # This is a Problem Room violation — emails should never reference
-    # the prospect's company by name (private signal firewall)
-    #
-    # Checks: full name, and significant substrings (2+ words) to catch
-    # partial mentions like "Acme" from "Acme Health Systems"
 
     import re
 
     violations: list[GuardrailViolation] = []
     text_lower = email_text.lower()
-
-    # Check full company name
     name_lower = company_name.strip().lower()
     if not name_lower:
         return violations
@@ -328,7 +283,6 @@ def _check_company_name_leak(
         )
         return violations
 
-    # Check significant words from the company name (skip common suffixes)
     skip_words = {
         "inc", "llc", "ltd", "corp", "co", "company", "group", "services",
         "solutions", "systems", "technologies", "consulting", "partners",
@@ -336,7 +290,6 @@ def _check_company_name_leak(
     }
     words = [w for w in re.split(r"[\s,.\-&]+", name_lower) if w and w not in skip_words]
 
-    # Only check individual words if they're distinctive (4+ chars)
     for word in words:
         if len(word) >= 4 and re.search(rf"\b{re.escape(word)}\b", text_lower):
             violations.append(
@@ -358,7 +311,6 @@ def _build_suggestion(room: str, violations: list[GuardrailViolation]) -> str:
     if not violations:
         return f"Content passes all {room} room guardrails."
 
-    # Group by violation type
     by_type: dict[str, list[str]] = {}
     for v in violations:
         by_type.setdefault(v.violation_type, []).append(v.matched_text)
@@ -391,8 +343,7 @@ def _build_suggestion(room: str, violations: list[GuardrailViolation]) -> str:
 
 def _count_body_words(email_text: str) -> int:
     # Count words in the email body, excluding subject line,
-    # greeting (Hi X —), signature, and link line
-    # Matches GPT spec: word count excludes greeting/signature/link
+    # greeting, signature, and link line
 
     lines = email_text.strip().split("\n")
     body_lines: list[str] = []
@@ -413,10 +364,8 @@ def _count_body_words(email_text: str) -> int:
             continue
         if any(stripped.startswith(p) or p in stripped for p in skip_patterns):
             continue
-        # Skip "I'm [Sender Name]." intro line
         if stripped.startswith("I'm ") and len(stripped) < 40:
             continue
-        # Skip opt-out lines
         if "reply" in stripped.lower() and "stop" in stripped.lower():
             continue
         body_lines.append(stripped)
@@ -427,10 +376,9 @@ def _count_body_words(email_text: str) -> int:
 
 def _extract_subject(email_text: str) -> str | None:
     # Extract subject line from email text
-    # Looks for "Subject: ..." on first line
 
     lines = email_text.strip().split("\n")
-    for line in lines[:3]:  # Check first 3 lines
+    for line in lines[:3]:
         stripped = line.strip()
         if stripped.lower().startswith("subject:"):
             return stripped[len("Subject:"):].strip()
