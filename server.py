@@ -11,7 +11,7 @@
 #   POST /webhook/batch-generate  - Trigger batch email generation
 #   GET  /health                  - Health check
 #   GET  /health/ready            - Readiness check (validates API keys)
-# 
+#
 # WordPress Integration:
 #   The WordPress plugin sends a POST to /webhook/generate-email when a
 #   prospect enters a new room or needs a fresh email. The CIS runs the
@@ -51,10 +51,20 @@ app = FastAPI(
 # =============================================================================
 
 class GenerateEmailRequest(BaseModel):
-    """Request body for email generation webhook."""
+    # Request body for email generation webhook.
 
     prospect_id: int = Field(..., description="ID from rtr_prospects table")
     campaign_id: int = Field(..., description="ID from dr_campaign_settings table")
+    # email_number is the WP-reserved slot (1-5).
+    # WordPress calculates this before calling us and sets the slot to 'generating'.
+    # We use it in write_back_email so store-external writes to the correct slot.
+    # If absent, write_back_email falls back to email_sequence_position + 1.
+    email_number: int | None = Field(
+        default=None,
+        ge=1,
+        le=5,
+        description="Email slot to fill (1-5). Set by WordPress before calling CIS.",
+    )
     prospect_data: dict[str, Any] | None = Field(
         default=None,
         description="Optional pre-fetched prospect data. If None, CIS fetches from WordPress.",
@@ -67,7 +77,7 @@ class GenerateEmailRequest(BaseModel):
 
 
 class GenerateEmailResponse(BaseModel):
-    """Response body for email generation."""
+    # Response body for email generation.
 
     success: bool
     prospect_id: int
@@ -88,7 +98,7 @@ class GenerateEmailResponse(BaseModel):
 
 
 class BatchGenerateRequest(BaseModel):
-    """Request body for batch email generation."""
+    # Request body for batch email generation.
 
     prospects: list[GenerateEmailRequest] = Field(
         ..., min_length=1, max_length=50,
@@ -101,7 +111,7 @@ class BatchGenerateRequest(BaseModel):
 
 
 class BatchGenerateResponse(BaseModel):
-    """Response body for batch generation."""
+    # Response body for batch generation.
 
     success: bool
     total: int
@@ -110,7 +120,7 @@ class BatchGenerateResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Health check response."""
+    # Health check response.
 
     status: str
     version: str = "0.6.0"
@@ -136,15 +146,10 @@ class ProcessProspectRequest(BaseModel):
 # =============================================================================
 
 def _verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
-    """Verify the incoming webhook API key matches our WordPress API key.
-
-    WordPress sends the same API key it uses for its own REST endpoints.
-    If no API key is configured on CIS side, authentication is skipped
-    (useful for local development).
-    """
+    # Verify the incoming webhook API key matches our configured key.
+    # If no key is configured on CIS side, auth is skipped (dev mode).
 
     if not settings.journeyos_api_key:
-        # No API key configured \u2014 skip auth (dev mode)
         return
 
     if x_api_key != settings.journeyos_api_key:
@@ -160,7 +165,7 @@ def _verify_api_key(x_api_key: str | None = Header(default=None)) -> None:
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
-    """Basic health check \u2014 always returns 200 if server is running."""
+    # Basic health check — always returns 200 if server is running.
 
     return HealthResponse(
         status="ok",
@@ -172,7 +177,7 @@ async def health_check() -> HealthResponse:
 
 @app.get("/health/ready", response_model=HealthResponse)
 async def readiness_check() -> HealthResponse:
-    """Readiness check \u2014 returns 503 if no LLM keys are configured."""
+    # Readiness check — returns 503 if no LLM keys are configured.
 
     has_any_llm = settings.has_anthropic_key or settings.has_gemini_key
 
@@ -196,12 +201,11 @@ async def generate_email(
     background_tasks: BackgroundTasks,
     x_api_key: str | None = Header(default=None),
 ) -> GenerateEmailResponse:
-    """Trigger email generation for a single prospect.
-
-    If callback_url is provided, generation runs in the background
-    and results are POSTed to WordPress. Otherwise, runs synchronously
-    and returns results in the response body.
-    """
+    # Trigger email generation for a single prospect.
+    #
+    # If callback_url is provided, generation runs in the background
+    # and results are POSTed to WordPress. Otherwise, runs synchronously
+    # and returns results in the response body.
 
     _verify_api_key(x_api_key)
 
@@ -210,19 +214,21 @@ async def generate_email(
         extra={
             "prospect_id": request.prospect_id,
             "campaign_id": request.campaign_id,
+            "email_number": request.email_number,
             "has_callback": request.callback_url is not None,
             "has_prospect_data": request.prospect_data is not None,
         },
     )
 
     if request.callback_url:
-        # Async mode \u2014 queue background task and return immediately
+        # Async mode — queue background task and return immediately
         background_tasks.add_task(
             _generate_and_callback,
             request.prospect_id,
             request.campaign_id,
             request.prospect_data,
             request.callback_url,
+            request.email_number,
         )
 
         return GenerateEmailResponse(
@@ -232,11 +238,12 @@ async def generate_email(
             error="Processing in background. Results will be POSTed to callback_url.",
         )
 
-    # Sync mode \u2014 run pipeline and return results
+    # Sync mode — run pipeline and return results
     return await _run_pipeline(
         request.prospect_id,
         request.campaign_id,
         request.prospect_data,
+        request.email_number,
     )
 
 
@@ -246,11 +253,10 @@ async def batch_generate(
     background_tasks: BackgroundTasks,
     x_api_key: str | None = Header(default=None),
 ) -> BatchGenerateResponse:
-    """Trigger batch email generation for multiple prospects.
-
-    Always runs in the background. Results are POSTed to callback_url
-    for each prospect as they complete.
-    """
+    # Trigger batch email generation for multiple prospects.
+    #
+    # Always runs in the background. Results are POSTed to callback_url
+    # for each prospect as they complete.
 
     _verify_api_key(x_api_key)
 
@@ -264,6 +270,7 @@ async def batch_generate(
             prospect_req.campaign_id,
             prospect_req.prospect_data,
             cb,
+            prospect_req.email_number,
         )
 
     logger.info(
@@ -351,6 +358,7 @@ async def process_prospect(
             campaign_id,
             prospect_data,
             request.callback_url,
+            None,  # process-prospect has no email_number concept
         )
 
         return GenerateEmailResponse(
@@ -360,11 +368,12 @@ async def process_prospect(
             error="Processing in background. Results will be POSTed to callback_url.",
         )
 
-    # Sync mode — prospect_data is already fetched, pass it through
+    # Sync mode — prospect_data already fetched, no reserved email_number
     return await _run_pipeline(
         request.prospect_id,
         campaign_id,
         prospect_data,
+        None,
     )
 
 
@@ -376,8 +385,9 @@ async def _run_pipeline(
     prospect_id: int,
     campaign_id: int,
     prospect_data: dict[str, Any] | None = None,
+    email_number: int | None = None,
 ) -> GenerateEmailResponse:
-    """Run the full LangGraph pipeline and build a response."""
+    # Run the full LangGraph pipeline and build a response.
 
     start = time.monotonic()
 
@@ -386,6 +396,7 @@ async def _run_pipeline(
             prospect_id=prospect_id,
             campaign_id=campaign_id,
             prospect_data=prospect_data,
+            email_number=email_number,
         )
 
         elapsed_ms = int((time.monotonic() - start) * 1000)
@@ -411,11 +422,11 @@ async def _run_pipeline(
             analysis_source=intent.analysis_source if intent else None,
             processing_time_ms=elapsed_ms,
             writeback_tracking_id=(
-            writeback.get("email_tracking_id") if writeback and "email_tracking_id" in writeback else None
+                writeback.get("email_tracking_id") if writeback and "email_tracking_id" in writeback else None
             ),
             writeback_success=(
                 writeback is not None and "error" not in writeback
-            ) if writeback else None,            
+            ) if writeback else None,
             error=result.get("error"),
         )
 
@@ -441,14 +452,15 @@ async def _generate_and_callback(
     campaign_id: int,
     prospect_data: dict[str, Any] | None,
     callback_url: str | None,
+    email_number: int | None = None,
 ) -> None:
-    """Run pipeline and POST results to WordPress callback endpoint."""
+    # Run pipeline and POST results to WordPress callback endpoint.
 
-    response = await _run_pipeline(prospect_id, campaign_id, prospect_data)
+    response = await _run_pipeline(prospect_id, campaign_id, prospect_data, email_number)
 
     if not callback_url:
         logger.warning(
-            "No callback_url \u2014 results discarded",
+            "No callback_url — results discarded",
             extra={"prospect_id": prospect_id},
         )
         return
@@ -456,7 +468,7 @@ async def _generate_and_callback(
     try:
         payload = response.model_dump()
 
-        # Build auth for the callback (same WordPress Application Passwords)
+        # Build auth for the callback (WordPress Application Passwords)
         auth = None
         if settings.has_wordpress_auth:
             auth = httpx.BasicAuth(

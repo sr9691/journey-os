@@ -207,6 +207,7 @@ def handle_error(state: AgentState) -> dict:
     logger.error(f"Workflow error: {error}")
     return {"requires_human_approval": True}
 
+
 async def write_back_email(state: AgentState) -> dict[str, Any]:
     # Write the generated email back to WordPress via store-external endpoint
     #
@@ -215,6 +216,10 @@ async def write_back_email(state: AgentState) -> dict[str, Any]:
     #   - Email was generated
     #   - Guardrails passed
     #   - WordPress auth is configured
+    #
+    # email_number priority:
+    #   1. state["email_number"] — set by WordPress before calling us (preferred)
+    #   2. email_sequence_position + 1 — fallback derivation from prospect data
     #
     # Non-fatal: if write-back fails, logs warning but does not set error.
     # The email is still available in the pipeline response.
@@ -265,17 +270,18 @@ async def write_back_email(state: AgentState) -> dict[str, Any]:
     # Determine room_type from prospect data
     room_type = prospect_data.get("current_room", "problem")
 
-    # Determine email_number from prospect's sequence position
-    # email_sequence_position tracks how many emails have been sent;
-    # the next email to generate is position + 1
-    email_sequence_position = prospect_data.get("email_sequence_position", 0)
-    email_number = email_sequence_position + 1
+    # email_number: use WP-reserved slot when available, otherwise derive
+    email_number = state.get("email_number")
+    if not email_number:
+        email_sequence_position = prospect_data.get("email_sequence_position", 0)
+        email_number = email_sequence_position + 1
+        logger.debug(
+            "email_number not in state, derived from sequence_position",
+            extra={"prospect_id": prospect_id, "email_number": email_number},
+        )
 
-    # Parse subject from generated email
-    # The email composer puts subject on the first line as "Subject: ..."
-    body_html = generated_email
+    # Build subject line
     intent = state.get("intent_profile")
-
     if selected and selected.title:
         subject = selected.title
     elif intent and intent.pain_points:
@@ -284,7 +290,6 @@ async def write_back_email(state: AgentState) -> dict[str, Any]:
         company = prospect_data.get("company_name", "your team")
         subject = f"A resource for {company}"
 
-        
     # Get selected content URL
     url_included = selected.url if selected else None
 
@@ -297,7 +302,7 @@ async def write_back_email(state: AgentState) -> dict[str, Any]:
                 room_type=room_type,
                 email_number=email_number,
                 subject=subject,
-                body_html=body_html,
+                body_html=generated_email,
                 body_text="",  # WordPress will strip_tags as fallback
                 url_included=url_included,
             )
@@ -327,7 +332,6 @@ async def write_back_email(state: AgentState) -> dict[str, Any]:
             "writeback_result": {"error": str(e)},
             "current_step": "write_back_email",
         }
-
 
 
 # =============================================================================
@@ -419,18 +423,16 @@ async def run_email_generation(
     prospect_id: int,
     campaign_id: int,
     prospect_data: dict | None = None,
+    email_number: int | None = None,
 ) -> AgentState:
     # Run the email generation workflow for a prospect
-    #
-    # This is the main entry point for triggering email generation
-    # from WordPress webhooks or other external systems.
     #
     # Args:
     #     prospect_id: ID of the prospect in rtr_prospects table
     #     campaign_id: ID of the campaign in dr_campaign_settings table
     #     prospect_data: Optional pre-fetched prospect data dict.
-    #                    If None, fetch_prospect_data node will attempt
-    #                    to fetch from WordPress (or fall back to mock).
+    #     email_number: WP-reserved email slot (1-5). When set, write_back_email
+    #                   uses this slot so the correct icon turns green in the UI.
     #
     # Returns:
     #     Final AgentState with ranked assets, generated email, and guardrail results
@@ -441,6 +443,7 @@ async def run_email_generation(
         prospect_id=prospect_id,
         campaign_id=campaign_id,
         prospect_data=prospect_data,
+        email_number=email_number,
     )
 
     logger.info(
@@ -448,11 +451,11 @@ async def run_email_generation(
         extra={
             "prospect_id": prospect_id,
             "campaign_id": campaign_id,
+            "email_number": email_number,
             "has_prospect_data": prospect_data is not None,
         },
     )
 
-    # Run the graph \u2014 fetch_prospect_data will handle data retrieval
     result = await email_generation_graph.ainvoke(initial_state)
 
     logger.info(

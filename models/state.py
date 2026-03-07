@@ -120,6 +120,10 @@ class AgentState(TypedDict, total=False):
     # Input - set by workflow trigger
     prospect_id: int
     campaign_id: int
+    # email_number is the WP-calculated slot to fill (1-5).
+    # Set by the webhook handler when WordPress determines the slot before calling us.
+    # write_back_email uses this value; falls back to sequence_position+1 if absent.
+    email_number: int | None
 
     # Prospect data - populated by data fetch from WordPress
     prospect_data: dict[str, Any] | None
@@ -146,7 +150,7 @@ class AgentState(TypedDict, total=False):
     guardrail_result: GuardrailResult | None
     revision_count: int
     revision_instructions: str | None
-    
+
     # Write-back to WordPress — populated by write_back_email node
     writeback_result: dict[str, Any] | None
 
@@ -164,12 +168,14 @@ def create_initial_state(
     prospect_id: int,
     campaign_id: int,
     prospect_data: dict[str, Any] | None = None,
+    email_number: int | None = None,
 ) -> AgentState:
     # Factory for properly initialized state
     return AgentState(
         prospect_id=prospect_id,
         campaign_id=campaign_id,
         prospect_data=prospect_data,
+        email_number=email_number,
         intent_profile=None,
         ranked_assets=[],
         selected_content=None,
