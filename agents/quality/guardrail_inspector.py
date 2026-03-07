@@ -5,18 +5,10 @@
 # Validates generated content against room-specific guardrail rules
 # from the RTR (Reading Room) methodology.
 #
-# Phase 4: Pattern-based inspection using pre-compiled regex from
-# config/guardrails.py. Checks content against the rules for the
-# prospect's current room (problem, solution, offer).
-#
-# Each room has different allowed language:
-#   - Problem room: No company mentions, no pricing, no CTAs
-#   - Solution room: Soft company references OK, no pricing/CTAs
-#   - Offer room: Company mentions + pricing + CTAs OK, no aggressive sales
-#   - All rooms: No superlatives, no competitor mentions
-#
-# The inspector runs AFTER content is ranked (and eventually after
-# email generation in Phase 5) to validate the final output.
+# NOTE: Only the generated_email is pattern-checked. The selected_content
+# title is NOT included — article titles may contain words like "best" or
+# company names that are legitimate in context but would false-positive
+# against email guardrails.
 # =============================================================================
 
 import logging
@@ -24,7 +16,6 @@ from typing import Any
 
 from config.guardrails import (
     ViolationType,
-    ROOM_RULES,
     find_pattern_matches,
     is_violation_checked,
     check_word_count,
@@ -45,7 +36,7 @@ MAX_VIOLATIONS_BEFORE_REVIEW = 3
 
 
 async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
-    """Inspect content against room-specific guardrail rules."""
+    """Inspect generated email against room-specific guardrail rules."""
 
     prospect_data = state.get("prospect_data", {})
     room = prospect_data.get("current_room", "problem")
@@ -56,20 +47,14 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
         extra={"prospect_id": prospect_id, "room": room},
     )
 
-    # Collect all text to inspect
-    texts_to_check: list[str] = []
-
+    # Only inspect the generated email — NOT the content asset title.
+    # Article titles may contain guardrail-triggering words (superlatives,
+    # company names) that are legitimate in the content but wrong in the email.
     generated_email = state.get("generated_email")
-    if generated_email:
-        texts_to_check.append(generated_email)
 
-    selected = state.get("selected_content")
-    if selected:
-        texts_to_check.append(selected.title)
-
-    if not texts_to_check:
+    if not generated_email:
         logger.info(
-            "No content to inspect, passing guardrails",
+            "No generated email to inspect, passing guardrails",
             extra={"prospect_id": prospect_id},
         )
         return {
@@ -77,22 +62,22 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
                 passed=True,
                 room=room,
                 checked_text="",
-                suggestion="No content to inspect yet.",
+                suggestion="No email to inspect yet.",
             ),
             "current_step": "inspect_guardrails",
         }
 
-    combined_text = "\n\n".join(texts_to_check)
-
-    # Run all applicable checks for this room
     all_violations: list[GuardrailViolation] = []
 
+    # --- Pattern-based checks against email text ---
     for violation_type in ViolationType:
         if not is_violation_checked(room, violation_type):
             continue
+        # Word count is handled separately below
+        if violation_type == ViolationType.WORD_COUNT:
+            continue
 
-        matches = find_pattern_matches(combined_text, violation_type)
-
+        matches = find_pattern_matches(generated_email, violation_type)
         for match_info in matches:
             severity = (
                 "block" if violation_type in BLOCKING_VIOLATIONS else "warning"
@@ -107,7 +92,7 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
             )
 
     # --- Word count check ---
-    if is_violation_checked(room, ViolationType.WORD_COUNT) and generated_email:
+    if is_violation_checked(room, ViolationType.WORD_COUNT):
         body_word_count = _count_body_words(generated_email)
         wc_violations = check_word_count(body_word_count, room)
         for wc_match in wc_violations:
@@ -121,7 +106,7 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
             )
 
     # --- Field Note subject prefix check (Problem Room only) ---
-    if room == "problem" and generated_email:
+    if room == "problem":
         subject_line = _extract_subject(generated_email)
         if subject_line and not subject_line.startswith("Field Note:"):
             all_violations.append(
@@ -134,7 +119,7 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
             )
 
     # --- Dynamic company name check (Problem Room only) ---
-    if room == "problem" and generated_email:
+    if room == "problem":
         company_name = prospect_data.get("company_name", "")
         if company_name:
             company_violations = _check_company_name_leak(
@@ -145,7 +130,6 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
     # Determine pass/fail
     has_blocking = any(v.severity == "block" for v in all_violations)
     passed = len(all_violations) == 0
-
     suggestion = _build_suggestion(room, all_violations)
 
     result = GuardrailResult(
@@ -153,7 +137,7 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
         room=room,
         violations=all_violations,
         violation_count=len(all_violations),
-        checked_text=combined_text[:500],
+        checked_text=generated_email[:500],
         suggestion=suggestion,
     )
 
@@ -163,7 +147,6 @@ async def inspect_guardrails(state: AgentState) -> dict[str, Any]:
     )
 
     if all_violations:
-        # Log each violation inline so Render displays them
         for v in all_violations:
             logger.warning(
                 f"[GUARDRAIL] prospect={prospect_id} room={room} "
@@ -199,9 +182,10 @@ def inspect_text(text: str, room: str) -> GuardrailResult:
     for violation_type in ViolationType:
         if not is_violation_checked(room, violation_type):
             continue
+        if violation_type == ViolationType.WORD_COUNT:
+            continue
 
         matches = find_pattern_matches(text, violation_type)
-
         for match_info in matches:
             severity = (
                 "block" if violation_type in BLOCKING_VIOLATIONS else "warning"

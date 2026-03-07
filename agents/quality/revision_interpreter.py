@@ -13,6 +13,7 @@
 # =============================================================================
 
 import logging
+import re
 from typing import Any
 
 from models.state import AgentState, GuardrailResult
@@ -49,17 +50,11 @@ VIOLATION_INSTRUCTIONS: dict[str, str] = {
         "tactics, no pressure. The tone should be helpful and educational."
     ),
     "superlative": (
-        "Remove superlative claims. Do not use words like 'best', 'leading', "
-        "'top', '#1', 'premier', 'unmatched'. Use specific, factual language."
-    ),
-    "competitor_mention": (
-        "Remove all competitor references by name. Do not mention any "
-        "specific companies, products, or services by name."
-    ),
-    "word_count": (
-        "Adjust the email body length to be between 110-170 words "
-        "(excluding greeting, signature, and link line). The current "
-        "email is outside this range."
+        "Remove ALL superlative claims from the EMAIL BODY. Do not use words "
+        "like 'best', 'leading', 'top', '#1', 'premier', 'unmatched', "
+        "'cutting-edge', 'world-class'. Use specific, factual language instead. "
+        "Note: if 'best' appears only in the article title or link you are "
+        "referencing, do not repeat it in your prose."
     ),
     "field_note_subject": (
         "The subject line MUST start with 'Field Note:' followed by a "
@@ -87,11 +82,8 @@ DEFAULT_INSTRUCTION = (
 def interpret_revisions(state: AgentState) -> dict[str, Any]:
     # Convert guardrail violations into revision instructions
     #
-    # Reads: guardrail_result, revision_count
+    # Reads: guardrail_result, revision_count, generated_email
     # Returns: revision_instructions (str), revision_count (incremented)
-    #
-    # The revision_instructions string is added to the Gemini prompt
-    # on the next compose_email pass.
 
     guardrail_result = state.get("guardrail_result")
     revision_count = state.get("revision_count", 0)
@@ -104,7 +96,6 @@ def interpret_revisions(state: AgentState) -> dict[str, Any]:
         )
         return {"current_step": "interpret_revisions"}
 
-    # Increment revision count
     new_count = revision_count + 1
 
     logger.info(
@@ -116,7 +107,6 @@ def interpret_revisions(state: AgentState) -> dict[str, Any]:
         },
     )
 
-    # Build revision instructions from violations
     instructions_parts: list[str] = []
     instructions_parts.append(
         f"## REVISION REQUIRED (attempt {new_count} of {MAX_REVISION_ATTEMPTS})\n"
@@ -134,7 +124,14 @@ def interpret_revisions(state: AgentState) -> dict[str, Any]:
             continue
         seen_types.add(vtype)
 
-        instruction = VIOLATION_INSTRUCTIONS.get(vtype, DEFAULT_INSTRUCTION)
+        # For word_count, build a concrete instruction from the actual count
+        if vtype == "word_count":
+            instruction = _build_word_count_instruction(
+                violation.matched_text, state
+            )
+        else:
+            instruction = VIOLATION_INSTRUCTIONS.get(vtype, DEFAULT_INSTRUCTION)
+
         matched = violation.matched_text
         instructions_parts.append(
             f"- **{vtype}**: Found '{matched}'. {instruction}"
@@ -161,3 +158,45 @@ def interpret_revisions(state: AgentState) -> dict[str, Any]:
         "revision_count": new_count,
         "current_step": "interpret_revisions",
     }
+
+
+def _build_word_count_instruction(matched_text: str, state: AgentState) -> str:
+    # Build a concrete word count instruction from the violation match text.
+    # matched_text is e.g. "Word count: 98 (min: 110)" or "Word count: 185 (max: 170)"
+    # Extract the actual count and give Gemini a specific target.
+
+    prospect_data = state.get("prospect_data", {})
+    room = prospect_data.get("current_room", "problem")
+
+    # Parse current word count from matched_text
+    current_count = 0
+    count_match = re.search(r"Word count: (\d+)", matched_text)
+    if count_match:
+        current_count = int(count_match.group(1))
+
+    # Room-specific targets
+    targets = {
+        "problem": (110, 150, 130),
+        "solution": (150, 350, 250),
+        "offer": (150, 400, 275),
+    }
+    min_wc, max_wc, target_wc = targets.get(room, (110, 170, 130))
+
+    if current_count < min_wc:
+        delta = min_wc - current_count
+        return (
+            f"The email body is currently {current_count} words, which is below "
+            f"the minimum of {min_wc}. Add approximately {delta} more words by "
+            f"expanding one observation with a specific detail or consequence. "
+            f"Target {target_wc} words total in the body "
+            f"(excluding greeting, signature, and link line)."
+        )
+    else:
+        delta = current_count - max_wc
+        return (
+            f"The email body is currently {current_count} words, which exceeds "
+            f"the maximum of {max_wc}. Remove approximately {delta} words by "
+            f"trimming adjectives and redundant clauses. "
+            f"Target {target_wc} words total in the body "
+            f"(excluding greeting, signature, and link line)."
+        )
