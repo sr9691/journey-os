@@ -49,10 +49,10 @@ Rules:
     "pain_framing": """
 Structure the value block with these EXACT labels, in this order:
 
-**What's happening:** (1 sentence, plain English, describing the real-world problem)
-**The real cause:** (1 sentence that reframes: "this looks like X but is actually Y")
-**Quick test (2 minutes):** (2 bullets. Each bullet is a FULL sentence of 10-15 words.)
-**What to do next (small move):** (3 bullets. Each bullet is a FULL sentence of 10-15 words.)
+What's happening: (1 sentence, plain English, describing the real-world problem)
+The real cause: (1 sentence that reframes: "this looks like X but is actually Y")
+Quick test (2 minutes): (2 bullets. Each bullet is a FULL sentence of 10-15 words.)
+What to do next (small move): (3 bullets. Each bullet is a FULL sentence of 10-15 words.)
 
 Rules:
 - "What's happening" and "The real cause" must be ONE SENTENCE each (15-20 words minimum).
@@ -61,6 +61,13 @@ Rules:
 - Every item must be grounded in the article content provided.
 - Include one expert distinction: a misdiagnosis, tradeoff, or reframe.
 - Do NOT write fragments. Do NOT use colons to introduce a sub-clause and stop there.
+- PLAIN TEXT ONLY. Do NOT use markdown bold (**text**), italics (*text*), or any other
+  markdown formatting anywhere in the email body.
+- The four section headers (What's happening, The real cause, Quick test, What to do next)
+  must be written exactly as shown above — no asterisks, no bold markers.
+- Bullet points are plain hyphens (-) or nothing. No markdown list syntax.
+- For the content link, write the raw URL directly (e.g. https://example.com/article).
+  Do NOT use markdown link syntax [text](url) under any circumstances.
 """,
 
     "value_positioning": """
@@ -76,11 +83,13 @@ Position value through specificity, not claims.
     "content_integration": """
 If a content link is provided, add it as a single optional line AFTER the value block:
 
-"If you want the longer breakdown, here it is (no signup): {url}"
+"If you want the longer breakdown, here it is (no signup): https://..."
 
 Rules:
 - The email MUST deliver full value without clicking.
 - The link is supplementary, never gated, never required.
+- Write the URL as plain text (e.g. https://example.com/article).
+- Do NOT use markdown link syntax [text](url) — write the raw URL directly.
 - Never say "click here to get the full version."
 - Never require a reply to get the resource.
 """,
@@ -149,8 +158,9 @@ Position the content as a thinking tool:
 
     "content_integration": """
 Present the content link as a helpful resource:
-- "Here's an article that breaks this down: {url}"
+- "Here's an article that breaks this down: https://..."
 - Never gate it or require a form fill
+- Write the URL as plain text — do NOT use [text](url) markdown link syntax
 - The email should provide value even without clicking
 """,
 
@@ -211,8 +221,9 @@ Position solution approaches educationally:
 
     "content_integration": """
 Present content as a practical guide:
-- "This guide walks through the approach: {url}"
-- "Here's a case study that shows how this played out: {url}"
+- "This guide walks through the approach: https://..."
+- "Here's a case study that shows how this played out: https://..."
+- Write URLs as plain text — do NOT use [text](url) markdown link syntax
 - Frame as educational, not promotional
 """,
 
@@ -271,8 +282,9 @@ Position your specific offering:
 
     "content_integration": """
 Present content as decision-support:
-- "Here's a detailed breakdown of how this works: {url}"
-- "This shows the ROI analysis: {url}"
+- "Here's a detailed breakdown of how this works: https://..."
+- "This shows the ROI analysis: https://..."
+- Write URLs as plain text — do NOT use [text](url) markdown link syntax
 - Can be more promotional in framing
 """,
 

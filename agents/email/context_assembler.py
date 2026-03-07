@@ -36,9 +36,6 @@ DEFAULT_GENERATION_CONFIG: dict[str, Any] = {
 }
 
 # Room-specific generation adjustments
-# Note: max_output_tokens stays at 16384 for all rooms (the model will
-# naturally produce shorter output based on prompt instructions)
-# Temperature varies by room for tone control
 ROOM_GENERATION_OVERRIDES: dict[Room, dict[str, Any]] = {
     Room.PROBLEM: {
         "temperature": 0.6,  # More conservative for educational tone
@@ -70,6 +67,8 @@ Output Requirements:
 - The "body" should be plain text (not HTML)
 - Follow ALL room-specific guardrails exactly
 - Follow ALL length constraints exactly
+- PLAIN TEXT ONLY in the body — no markdown bold (**text**), italics (*text**),
+  headers (##), or [text](url) link syntax. Write URLs as raw text.
 
 {signal_firewall}
 """
@@ -88,9 +87,10 @@ Your writing style:
 Output Requirements:
 - Generate valid JSON with "subject" and "body" keys
 - Subject MUST start with "Field Note:"
-- Body must be plain text
+- Body must be plain text — absolutely no markdown formatting
 - Body must be 110-170 words (excluding greeting/signature/link)
 - Follow the exact structure: What's happening → The real cause → Quick test → What to do next
+- Section headers must be plain text labels (e.g. "What's happening:") — no asterisks or bold markers
 
 Banned phrases (NEVER use):
 - "I'm reaching out" / "reaching out" / "touch base" / "circle back"
@@ -100,6 +100,13 @@ Banned phrases (NEVER use):
 - "game-changing" / "unlock" / "leverage" / "synergy"
 - "leaders like you" / "personalized for you"
 - Any reference to website visits, tracking, or intent data
+
+Banned formatting (NEVER use):
+- Markdown bold: **text**
+- Markdown italics: *text*
+- Markdown headers: ## Heading
+- Markdown link syntax: [link text](https://url.com) — write the raw URL instead
+- Any other markdown or HTML formatting
 
 {signal_firewall}
 """
@@ -218,7 +225,10 @@ def _build_content_context(
         )
 
     if url:
-        context_parts.append("\nIntegrate this link naturally in the email body.")
+        context_parts.append(
+            f"\nInclude this URL as plain text in the email body: {url}"
+            "\nDo NOT wrap it in markdown link syntax [text](url)."
+        )
     else:
         context_parts.append(
             "\nNo content link available. Write a standalone insight email "
@@ -270,15 +280,18 @@ def _build_room_guardrails(room: Room) -> str:
 ⛔ DO NOT: Include pricing, demos, calls, or sales CTAs
 ⛔ DO NOT: Use urgency tactics or scarcity language
 ⛔ DO NOT: Reference website visits, tracking, or how you found them
+⛔ DO NOT: Use markdown formatting — bold (**text**), [link](url), or any other markup
 ✅ DO: Focus purely on the problem and education
 ✅ DO: Use neutral, third-person perspective
-✅ DO: Be a helpful peer, not a salesperson"""
+✅ DO: Be a helpful peer, not a salesperson
+✅ DO: Write URLs as plain text (e.g. https://example.com/article)"""
 
     elif room == Room.SOLUTION:
         return """## Room Guardrails (SOLUTION ROOM)
 ⛔ DO NOT: Push for demos or pricing discussions
 ⛔ DO NOT: Use aggressive sales language or urgency
 ⛔ DO NOT: Reference website visits or tracking
+⛔ DO NOT: Use markdown formatting — write URLs as plain text
 ⚠️ MAY: Reference "organizations like ours" softly
 ⚠️ MAY: Mention company expertise in passing
 ✅ DO: Focus on educational value and approaches
@@ -292,6 +305,7 @@ def _build_room_guardrails(room: Room) -> str:
 ✅ MAY: Reference pricing or proposals
 ✅ MAY: Use ROI and value language
 ⛔ DO NOT: Reference website visits or tracking
+⛔ DO NOT: Use markdown formatting — write URLs as plain text
 ⚠️ STILL: Maintain helpful tone, not pushy
 ⛔ DO NOT: Use aggressive urgency or manipulation"""
 

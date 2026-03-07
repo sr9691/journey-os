@@ -2,7 +2,8 @@
 # New email generation node that replaces the old compose_email
 # Chains: convert intent → extract insights → build template →
 #         assemble context → Gemini JSON → parse → fallback
-# Writes: generated_email, prompt_components, content_insights, generation_config
+# Writes: generated_email (body only), generated_subject, prompt_components,
+#         content_insights, generation_config
 
 from __future__ import annotations
 
@@ -46,6 +47,7 @@ async def compose_email_v2(state: AgentState) -> dict[str, Any]:
         )
         return {
             "generated_email": None,
+            "generated_subject": "",
             "current_step": "compose_email_v2",
         }
 
@@ -134,21 +136,25 @@ async def compose_email_v2(state: AgentState) -> dict[str, Any]:
     # ------------------------------------------------------------------
     # 5. Call Gemini for email generation (or fall back)
     # ------------------------------------------------------------------
-    email_text = None
+    gemini_result = None
     gen_source = "template"
 
     if settings.has_gemini_key:
-        email_text = await _generate_with_gemini(gen_context)
-        if email_text:
+        gemini_result = await _generate_with_gemini(gen_context)
+        if gemini_result:
             gen_source = "gemini"
 
-    if email_text is None:
+    if gemini_result:
+        email_body = gemini_result["body"]
+        email_subject = gemini_result["subject"]
+    else:
         # Fall back to old template-based generation
         logger.warning(
             "Gemini generation returned None — using template fallback",
             extra={"prospect_id": prospect_id},
         )
-        email_text = _fallback_template(prospect_data, new_intent, content_asset)
+        email_body = _fallback_template(prospect_data, new_intent, content_asset)
+        email_subject = ""
         gen_source = "template"
 
     logger.info(
@@ -158,12 +164,13 @@ async def compose_email_v2(state: AgentState) -> dict[str, Any]:
             "room": new_intent.current_room.value,
             "format": email_format,
             "source": gen_source,
-            "length": len(email_text) if email_text else 0,
+            "length": len(email_body) if email_body else 0,
         },
     )
 
     return {
-        "generated_email": email_text,
+        "generated_email": email_body,
+        "generated_subject": email_subject,
         "prompt_components": prompt_components,
         "content_insights": content_insights,
         "generation_config": gen_context,
@@ -175,11 +182,10 @@ async def compose_email_v2(state: AgentState) -> dict[str, Any]:
 # Gemini Generation
 # ============================================================================
 
-async def _generate_with_gemini(gen_context: dict[str, Any]) -> str | None:
+async def _generate_with_gemini(gen_context: dict[str, Any]) -> dict[str, str] | None:
     # Call Gemini with the assembled context, parse JSON response.
-    # Passes max_output_tokens from gen_context into GeminiClient so the
-    # client-level default (settings.gemini_max_tokens) doesn't cap the output.
-    # Returns the full email text (subject + body) or None on failure.
+    # Returns {"subject": ..., "body": ...} or None on failure.
+    # Subject and body are kept separate — never concatenated here.
 
     try:
         from services.llm_client import GeminiClient, LLMClientError
@@ -216,15 +222,11 @@ async def _generate_with_gemini(gen_context: dict[str, Any]) -> str | None:
             logger.warning("Gemini returned empty body")
             return None
 
-        # Combine subject + body into full email text
-        # The guardrail inspector and write-back node will use this
-        email_text = f"Subject: {subject}\n\n{body}" if subject else body
-
         logger.info(
             "Gemini generation succeeded",
             extra={"subject": subject[:60] if subject else "", "body_chars": len(body)},
         )
-        return email_text
+        return {"subject": subject, "body": body}
 
     except Exception as e:
         logger.warning(f"Gemini generation failed, falling back to template: {e}")
