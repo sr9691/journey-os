@@ -51,15 +51,16 @@ Structure the value block with these EXACT labels, in this order:
 
 **What's happening:** (1 sentence, plain English, describing the real-world problem)
 **The real cause:** (1 sentence that reframes: "this looks like X but is actually Y")
-**Quick test (2 minutes):** (1 bullet, max 2. Immediately runnable, non-obvious)
-**What to do next (small move):** (2 bullets, max 3. Practical THIS WEEK. No pitch.)
+**Quick test (2 minutes):** (2 bullets. Each bullet is a FULL sentence of 10-15 words.)
+**What to do next (small move):** (3 bullets. Each bullet is a FULL sentence of 10-15 words.)
 
 Rules:
-- "What's happening" and "The real cause" must be ONE SENTENCE each.
-- Quick test must be something a real person can do in 2 minutes.
-- Small moves must be actionable this week, not "consider" or "think about."
+- "What's happening" and "The real cause" must be ONE SENTENCE each (15-20 words minimum).
+- Quick test bullets: 2 required. Each must be a complete, specific sentence — not a fragment.
+- Small moves bullets: 3 required. Each must be a complete, actionable sentence this week.
 - Every item must be grounded in the article content provided.
 - Include one expert distinction: a misdiagnosis, tradeoff, or reframe.
+- Do NOT write fragments. Do NOT use colons to introduce a sub-clause and stop there.
 """,
 
     "value_positioning": """
@@ -300,14 +301,21 @@ Clear, direct call to action:
 
 WORD_COUNT_INSTRUCTIONS: dict[str, str] = {
     EMAIL_FORMAT_FIELD_NOTE: """
-## LENGTH CONSTRAINT (NON-NEGOTIABLE)
-Target: 110-150 words (NOT including greeting, signature, or link line).
-Absolute max: 170 words (excluding greeting/signature/link).
-- "What's happening" = 1 sentence
-- "The real cause" = 1 sentence
-- "Quick test" = 1 bullet (max 2 if unavoidable)
-- "What to do next" = 2 bullets (max 3 if unavoidable)
-Prefer DELETING over rephrasing. Keep only what changes meaning.
+## LENGTH REQUIREMENT — READ THIS FIRST
+
+The email body (excluding greeting, signature, and link line) MUST be 110-150 words.
+This is a hard minimum. Emails under 110 words will be rejected and regenerated.
+
+To reach 110+ words, you need SUBSTANCE in every section:
+- "What's happening" = 1 complete sentence, 15-20 words
+- "The real cause" = 1 complete sentence, 15-20 words
+- "Quick test" = 2 bullets, each a full sentence of 10-15 words
+- "What to do next" = 3 bullets, each a full sentence of 10-15 words
+
+That's 6 items minimum. Do NOT write fragments. Do NOT collapse bullets into
+one-word answers. Each bullet must be a complete, specific, actionable sentence.
+
+If you count your draft and it is under 110 words, ADD content — do not submit it.
 """,
 
     EMAIL_FORMAT_STANDARD: """
@@ -341,15 +349,22 @@ PRIVATE — DO NOT MENTION IN THE EMAIL:
 - Any phrase like "based on your interest," "I noticed you were reading,"
   "based on your activity," or "when you were on our site"
 
-PUBLIC — SAFE TO REFERENCE:
-- Company name
+PUBLIC — SAFE TO REFERENCE (Solution/Offer Room only):
 - Industry
 - Job title / role
 - Company size (as scale-aware wording, not exact employee counts)
 - Location (if relevant)
 - Publicly known initiatives
 
+PROBLEM ROOM RESTRICTION — EXTRA RULES:
+- DO NOT mention the prospect's company name anywhere in the email.
+  This includes partial matches, abbreviations, or common words from the name.
+  The recipient must not be able to identify themselves by company name.
+- DO NOT use the word "best", "#1", "leading", "top", "premier", or any
+  superlative — even if it appears in the article title you are referencing.
+  Describe the content without repeating its exact title wording.
+
 Use PRIVATE signals to choose what to write about.
-Use PUBLIC context to make it feel written for their world.
-If you removed the company name, the email should still clearly fit this role + industry.
+Use PUBLIC context to make it feel written for their role + industry.
+If you removed all company/name references, the email should still clearly fit this role.
 """
