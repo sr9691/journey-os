@@ -178,9 +178,9 @@ def _route_after_guardrails(
 ) -> Literal["write_back_email", "interpret_revisions", "handle_error"]:
     # Route after guardrail inspection
     #
-    # - Passed → write_back_email
-    # - Failed + revision_count < MAX → interpret_revisions → compose_email loop
-    # - Failed + revision_count >= MAX → handle_error (requires human approval)
+    # - Passed -> write_back_email
+    # - Failed + revision_count < MAX -> interpret_revisions -> compose_email loop
+    # - Failed + revision_count >= MAX -> handle_error (requires human approval)
 
     guardrail_result = state.get("guardrail_result")
     revision_count = state.get("revision_count", 0)
@@ -218,8 +218,14 @@ async def write_back_email(state: AgentState) -> dict[str, Any]:
     #   - WordPress auth is configured
     #
     # email_number priority:
-    #   1. state["email_number"] — set by WordPress before calling us (preferred)
-    #   2. email_sequence_position + 1 — fallback derivation from prospect data
+    #   1. state["email_number"] - set by WordPress before calling us (preferred)
+    #   2. email_sequence_position + 1 - fallback derivation from prospect data
+    #
+    # subject priority:
+    #   1. state["generated_subject"] - Gemini-generated subject from compose_email_v2
+    #   2. selected_content.title - content link title (fallback)
+    #   3. pain_points[0] - intent-derived fallback
+    #   4. company_name - last resort
     #
     # Non-fatal: if write-back fails, logs warning but does not set error.
     # The email is still available in the pipeline response.
@@ -280,15 +286,26 @@ async def write_back_email(state: AgentState) -> dict[str, Any]:
             extra={"prospect_id": prospect_id, "email_number": email_number},
         )
 
-    # Build subject line
-    intent = state.get("intent_profile")
-    if selected and selected.title:
-        subject = selected.title
-    elif intent and intent.pain_points:
-        subject = f"Thoughts on {intent.pain_points[0].lower()}"
-    else:
-        company = prospect_data.get("company_name", "your team")
-        subject = f"A resource for {company}"
+    # Build subject line - prefer Gemini-generated subject over title fallbacks
+    subject = state.get("generated_subject")
+    if not subject:
+        intent = state.get("intent_profile")
+        if selected and selected.title:
+            subject = selected.title
+        elif intent and intent.pain_points:
+            subject = f"Thoughts on {intent.pain_points[0].lower()}"
+        else:
+            company = prospect_data.get("company_name", "your team")
+            subject = f"A resource for {company}"
+
+    logger.debug(
+        "Subject for write-back",
+        extra={
+            "prospect_id": prospect_id,
+            "subject": subject,
+            "source": "generated_subject" if state.get("generated_subject") else "fallback",
+        },
+    )
 
     # Get selected content URL
     url_included = selected.url if selected else None
@@ -323,7 +340,7 @@ async def write_back_email(state: AgentState) -> dict[str, Any]:
         }
 
     except Exception as e:
-        # Non-fatal — log warning but don't fail the pipeline
+        # Non-fatal - log warning but don't fail the pipeline
         logger.warning(
             f"Write-back to WordPress failed (non-fatal): {e}",
             extra={"prospect_id": prospect_id},
@@ -390,7 +407,7 @@ def create_email_generation_graph() -> StateGraph:
     )
     workflow.add_edge("compose_email", "inspect_guardrails")
 
-    # inspect_guardrails -> route: pass → write_back, fail → revision loop or error
+    # inspect_guardrails -> route: pass -> write_back, fail -> revision loop or error
     workflow.add_conditional_edges(
         "inspect_guardrails",
         _route_after_guardrails,
@@ -401,7 +418,7 @@ def create_email_generation_graph() -> StateGraph:
         },
     )
 
-    # Revision loop: interpret_revisions → compose_email (which re-runs guardrails)
+    # Revision loop: interpret_revisions -> compose_email (which re-runs guardrails)
     workflow.add_edge("interpret_revisions", "compose_email")
 
     workflow.add_edge("write_back_email", END)
